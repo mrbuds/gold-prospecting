@@ -171,7 +171,8 @@
       }
     }
     const cell = (bx.p + by.p) / 2;
-    return { x: bx.o, y: by.o, size: cell * 8, cell, w: b.w, h: b.h, fit: [bx.p, by.p] };
+    return { x: bx.o, y: by.o, size: cell * 8, cell, w: b.w, h: b.h, fit: [bx.p, by.p],
+      sampleInset: b.squareFit ? 0.2 : 0.3 };
   }
 
   // Majority colour class of a square sample inside a cell, ignoring its border and icon centre.
@@ -215,8 +216,9 @@
       let line = '';
       for (let c = 0; c < 8; c++) {
         const cx = board.x + (c + 0.5) * board.cell, cy = board.y + (r + 0.5) * board.cell;
-        // top band of the tile, above its gem icon: tile base colour
-        line += readCell(a, cx, cy - board.cell * 0.3, Math.max(1, board.cell * 0.09));
+        // Sample inside the tile, above the icon but below the bright bevel.
+        // The outer top band can turn plain/empty cells yellow during a clear.
+        line += readCell(a, cx, cy - board.cell * board.sampleInset, Math.max(1, board.cell * 0.09));
       }
       grid.push(line);
     }

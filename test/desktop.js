@@ -54,8 +54,8 @@ assert.equal(recognize(web).error, 'board_not_found');
 console.log('Web solver alone: rejected');
 
 // Optional private desktop screenshot, kept outside the public repository.
-// Captured during a line-clear animation: assert localization and counters,
-// not tile colours affected by the glow.
+// Captured during a line-clear animation: verify all visible cells as well
+// as localization and counters. The state is the visible pre-clear board.
 if (process.argv[2]) {
   const got = recognize(readPng(process.argv[2]));
   assert.equal(got.error, undefined);
@@ -65,5 +65,7 @@ if (process.argv[2]) {
   assert.equal(got.level, 10200);
   assert.deepEqual(got.counters, { B: 3, C: 5, D: 3 });
   assert.deepEqual(got.pieces, [null, null, null]);
-  console.log('Real desktop with YouTube and solver UI: game localized, counters OK');
+  assert.deepEqual(got.grid, ['........', '..#.....', '.#......', '...#....',
+    '..#.....', 'B#DD####', '#...###.', '#...#...']);
+  console.log('Real desktop with YouTube and solver UI: all 64 cells and counters OK');
 }
