@@ -38,7 +38,8 @@
   .pieces { display: flex; gap: 10px; justify-content: center; margin: 12px 0; }
   .cell .mark .gem { position: absolute; width: 19%; height: 19%; top: 8%; right: 8%;
                     border: 1px solid currentColor; border-radius: 0; }
-  .piece { background: var(--panel); border: 3px solid transparent; border-radius: 10px; padding: 6px; position: relative; }
+  .piece { background: var(--panel); border: 3px solid transparent; border-radius: 10px; padding: 6px; position: relative;
+           width: 112px; height: 112px; display: flex; align-items: center; justify-content: center; }
   .piece .mini { display: grid; grid-template-columns: repeat(5, 18px); grid-template-rows: repeat(5, 18px); gap: 1px; }
   .piece .mini .cell { border-radius: 2px; }
   .piece .mini .cell.e { background: transparent; outline: 1px dashed #4a3c35; }
@@ -1374,15 +1375,22 @@ function render() {
     }
     const mini = document.createElement('div'); mini.className = 'mini';
     const h = rows ? rows.length : 0, w = rows ? Math.max(...rows.map((l) => l.length)) : 0;
-    for (let r = 0; r < 5; r++) for (let x = 0; x < 5; x++) {
-      const rr = r - (5 - h), ch = rows && rr >= 0 && x < w ? (rows[rr][x] || '.') : '.';
+    const fullGrid = st.editing || !rows;
+    const height = fullGrid ? 5 : h, width = fullGrid ? 5 : w;
+    const top = fullGrid ? Math.floor((5 - h) / 2) : 0;
+    const left = fullGrid ? Math.floor((5 - w) / 2) : 0;
+    mini.style.gridTemplateColumns = `repeat(${width}, 18px)`;
+    mini.style.gridTemplateRows = `repeat(${height}, 18px)`;
+    for (let r = 0; r < height; r++) for (let x = 0; x < width; x++) {
+      const rr = r - top, xx = x - left;
+      const ch = rows && rr >= 0 && rr < h && xx >= 0 && xx < w ? (rows[rr][xx] || '.') : '.';
       const c = cellEl(ch, true);
       c.onclick = () => {
         if (!st.editing) return;
         const grid5 = [];
         for (let i = 0; i < 5; i++) {
-          const ri = i - (5 - h);
-          grid5.push(Array.from({ length: 5 }, (_, j) => (rows && ri >= 0 && j < w ? (rows[ri][j] || '.') : '.')));
+          const ri = i - top;
+          grid5.push(Array.from({ length: 5 }, (_, j) => (rows && ri >= 0 && ri < h && j >= left && j < left + w ? (rows[ri][j - left] || '.') : '.')));
         }
         grid5[r][x] = CYCLE[(CYCLE.indexOf(grid5[r][x]) + 1) % CYCLE.length];
         st.pieces[slot] = trimPiece(grid5); st.plan = null; render();
