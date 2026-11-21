@@ -341,7 +341,7 @@
     }
     const panels = joined.filter(([x0, x1]) => x1 - x0 + 1 >= board.cell * 1.2)
       .sort((p, q) => (q[1] - q[0]) - (p[1] - p[0])).slice(0, 3).sort((p, q) => p[0] - q[0]);
-    return panels.map(([x0, x1]) => {
+    const bounds = panels.map(([x0, x1]) => {
       const rows = [];
       for (let y = top; y <= bottom; y++) {
         let n = 0;
@@ -351,6 +351,14 @@
       const r = runs(rows, 0.2, board.cell).sort((p, q) => (q[1] - q[0]) - (p[1] - p[0]))[0] || [0, rows.length - 1];
       return { x0, x1, y0: top + r[0], y1: top + r[1] };
     });
+    // The three slots share their vertical bounds. A wide piece can hide
+    // the middle of one slot and split its brown background into two bands.
+    if (bounds.length === 3) {
+      const median = (key) => bounds.map((p) => p[key]).sort((a, b) => a - b)[1];
+      const y0 = median('y0'), y1 = median('y1');
+      for (const p of bounds) { p.y0 = y0; p.y1 = y1; }
+    }
+    return bounds;
   }
 
   function isTile(rgb) {
