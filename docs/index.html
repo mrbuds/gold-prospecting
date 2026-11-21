@@ -1,0 +1,1376 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gold Prospecting solver</title>
+<style>
+  :root {
+    --bg: #2a211d; --panel: #3a2e28; --line: #241e1c; --text: #f3e7da; --muted: #b9a89a;
+    --empty: #3a3230; --block: #d6955a; --A: #5ab4f5; --B: #f6cf6e; --C: #8fd88c; --D: #ef8fc6;
+    --markA: #1c5fae; --markB: #c8641a; --markC: #2b7f39; --markD: #a8286f;
+    --s1: #ffffff; --s2: #ffe14d; --s3: #47e0ff; --accent: #f0a52e;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 520px; margin: 0 auto; padding: 12px 16px 40px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  h1 { font-size: 18px; margin: 4px 0; }
+  select, button { font: inherit; color: var(--text); background: var(--panel); border: 1px solid #5a4a40; border-radius: 8px; padding: 6px 10px; }
+  button.primary { background: var(--accent); color: #2a1a08; border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: .5; }
+  .drop { margin: 12px 0; padding: 14px; border: 2px dashed #6a5648; border-radius: 12px; text-align: center; color: var(--muted); }
+  .drop.over { border-color: var(--accent); color: var(--text); }
+  .drop button { margin-top: 8px; }
+  .status { min-height: 1.4em; color: var(--muted); margin: 6px 0; }
+  .goals { display: flex; gap: 8px; justify-content: center; margin: 8px 0; flex-wrap: wrap; }
+  .goal { display: flex; align-items: center; gap: 6px; background: var(--panel); border-radius: 10px; padding: 4px 8px; }
+  .goal .gem { width: 18px; height: 18px; transform: rotate(45deg); border-radius: 3px; }
+  .goal button { padding: 0 8px; }
+  .board { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; background: var(--line); padding: 2px; border-radius: 6px;
+           width: min(100%, 420px); margin: 0 auto; aspect-ratio: 1; }
+  .cell { position: relative; background: var(--empty); border-radius: 3px; display: flex; align-items: center; justify-content: center; user-select: none; }
+  .cell.b { background: var(--block); box-shadow: inset 2px 2px 0 #f2bc85, inset -2px -2px 0 #9c6232; }
+  .cell.gA { background: var(--A); } .cell.gB { background: var(--B); } .cell.gC { background: var(--C); } .cell.gD { background: var(--D); }
+  .cell .gem { width: 42%; height: 42%; transform: rotate(45deg); border-radius: 2px; }
+  .cell .mark { position: absolute; inset: 3px; border: 3px solid; border-radius: 4px; display: flex; align-items: center; justify-content: center;
+                font-weight: 800; font-size: clamp(12px, 4vw, 20px); text-shadow: 0 0 3px #000; }
+  .pieces { display: flex; gap: 10px; justify-content: center; margin: 12px 0; }
+  .piece { background: var(--panel); border: 3px solid transparent; border-radius: 10px; padding: 6px; position: relative; }
+  .piece .mini { display: grid; grid-template-columns: repeat(5, 18px); grid-template-rows: repeat(5, 18px); gap: 1px; }
+  .piece .mini .cell { border-radius: 2px; }
+  .piece .mini .cell.e { background: transparent; outline: 1px dashed #4a3c35; }
+  .piece .badge { position: absolute; top: -10px; right: -8px; background: var(--bg); border-radius: 10px; padding: 0 6px; font-weight: 800; }
+  .piece .num { position: absolute; top: 2px; left: 6px; font-size: 11px; color: var(--muted); }
+  .advice { background: var(--panel); border-radius: 10px; padding: 10px 12px; margin-top: 10px; white-space: pre-line; }
+  .row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 10px 0; }
+  .editing .cell, .editing .piece .mini .cell { cursor: pointer; }
+  .hint { color: var(--muted); font-size: 13px; text-align: center; }
+  footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 24px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1 data-t="title">Gold Prospecting · solveur</h1>
+    <select id="lang" aria-label="Language">
+      <option value="fr">FR</option><option value="en">EN</option><option value="vi">VI</option>
+    </select>
+  </header>
+
+  <div class="drop" id="drop">
+    <div data-t="drop">Collez une capture d'écran (Ctrl+V) ou glissez-la ici</div>
+    <button class="primary" id="pick" data-t="pick">Choisir une capture</button>
+    <input type="file" id="file" accept="image/*" hidden>
+  </div>
+  <div class="status" id="status"></div>
+
+  <div id="game" hidden>
+    <div class="row">
+      <label><span data-t="level">Niveau</span>
+        <select id="level"></select></label>
+      <button id="edit" data-t="edit">Corriger</button>
+      <button class="primary" id="solve" data-t="solve">Calculer</button>
+    </div>
+    <div class="goals" id="goals"></div>
+    <div class="board" id="board"></div>
+    <div class="pieces" id="pieces"></div>
+    <div class="hint" id="edithint" hidden data-t="edithint">Touchez une case pour changer sa couleur (vide → bloc → bleu → orange → vert → rose).</div>
+    <div class="advice" id="advice" hidden></div>
+  </div>
+  <footer data-t="footer">Tout se passe dans votre navigateur : aucune image n'est envoyée. Le solveur conseille, il ne joue pas à votre place.</footer>
+</main>
+
+<script>// Données du jeu (tables season_s1_block_game / season_s1_block) et poids réglés du solveur.
+// Fichier généré : ne pas modifier à la main.
+(function (root) {
+  const DATA = {"levels":[{"id":10200,"group":200,"targets":{"640071":10,"640072":5,"640073":5},"piece_group":"501","pieces_per_batch":3,"board_size":[8,8],"initial_layout_id":55,"initial_layout":[{"x":3,"y":4,"item":"640071"},{"x":4,"y":4,"item":"640072"},{"x":2,"y":3,"item":"640073"},{"x":5,"y":3,"item":null}],"reward":109030560},{"id":10201,"group":201,"targets":{"640070":5,"640071":5,"640072":10},"piece_group":"502","pieces_per_batch":3,"board_size":[8,8],"initial_layout_id":56,"initial_layout":[{"x":1,"y":5,"item":null},{"x":2,"y":5,"item":"640072"},{"x":4,"y":4,"item":"640070"},{"x":3,"y":3,"item":"640071"},{"x":5,"y":2,"item":"640070"},{"x":6,"y":2,"item":null}],"reward":109030560},{"id":10202,"group":202,"targets":{"640070":5,"640072":5,"640073":10},"piece_group":"503","pieces_per_batch":3,"board_size":[8,8],"initial_layout_id":57,"initial_layout":[{"x":2,"y":5,"item":"640072"},{"x":5,"y":5,"item":"640070"},{"x":1,"y":3,"item":null},{"x":6,"y":3,"item":"640070"},{"x":3,"y":2,"item":null},{"x":4,"y":2,"item":"640073"}],"reward":109030560},{"id":10203,"group":203,"targets":{"640070":10,"640071":5,"640072":5},"piece_group":"502","pieces_per_batch":3,"board_size":[8,8],"initial_layout_id":58,"initial_layout":[{"x":1,"y":4,"item":"640070"},{"x":2,"y":4,"item":null},{"x":5,"y":4,"item":"640071"},{"x":6,"y":4,"item":"640072"},{"x":2,"y":3,"item":null},{"x":5,"y":3,"item":"640070"}],"reward":109030560},{"id":10204,"group":204,"targets":{"640070":10,"640072":5,"640073":5},"piece_group":"503","pieces_per_batch":3,"board_size":[8,8],"initial_layout_id":59,"initial_layout":[{"x":2,"y":5,"item":"640070"},{"x":5,"y":5,"item":"640072"},{"x":3,"y":4,"item":"640070"},{"x":4,"y":4,"item":"640073"}],"reward":109030560}],"piece_groups":{"501":[{"cfgid":10501,"cells":[[0,0],[1,0],[2,0],[3,0]],"gems":{"640072":1}},{"cfgid":10502,"cells":[[0,0],[1,0],[2,0]],"gems":{"640073":1}},{"cfgid":10503,"cells":[[0,0],[1,0]],"gems":{"640073":1}},{"cfgid":10504,"cells":[[0,1],[1,1],[0,0],[1,0]],"gems":{"640071":1,"640072":1}},{"cfgid":10505,"cells":[[1,1],[0,0],[1,0]],"gems":{"640073":1}},{"cfgid":10506,"cells":[[0,1],[1,1],[0,0]],"gems":{"640071":1,"640072":1}},{"cfgid":10507,"cells":[[0,1],[1,1],[1,0]],"gems":{"640073":1,"640071":1}},{"cfgid":10508,"cells":[[0,1],[0,0],[1,0]],"gems":{"640071":1,"640072":1}},{"cfgid":10509,"cells":[[0,1],[0,0]],"gems":{"640071":1,"640072":1}},{"cfgid":10510,"cells":[[0,2],[0,1],[0,0]],"gems":{"640073":1,"640072":1}},{"cfgid":10511,"cells":[[0,3],[0,2],[0,1],[0,0]],"gems":{"640071":2}},{"cfgid":10512,"cells":[[1,1],[2,1],[0,0],[1,0]],"gems":{"640071":2}},{"cfgid":10513,"cells":[[0,1],[1,1],[1,0],[2,0]],"gems":{"640073":1,"640072":1}},{"cfgid":10514,"cells":[[0,2],[0,1],[1,1],[1,0]],"gems":{"640072":2}},{"cfgid":10515,"cells":[[1,2],[0,1],[1,1],[0,0]],"gems":{"640072":2}},{"cfgid":10516,"cells":[[1,1],[0,0]],"gems":{"640073":1}},{"cfgid":10517,"cells":[[0,1],[1,0]],"gems":{"640073":1}},{"cfgid":10518,"cells":[[2,2],[1,1],[0,0]],"gems":{"640072":2}},{"cfgid":10519,"cells":[[0,2],[1,1],[2,0]],"gems":{"640072":2}},{"cfgid":10520,"cells":[[1,1],[0,0],[1,0],[2,0]],"gems":{"640073":2}},{"cfgid":10521,"cells":[[0,1],[1,1],[2,1],[1,0]],"gems":{"640071":1}},{"cfgid":10522,"cells":[[0,2],[0,1],[1,1],[0,0]],"gems":{"640072":1}},{"cfgid":10523,"cells":[[1,2],[0,1],[1,1],[1,0]],"gems":{"640073":1}},{"cfgid":10524,"cells":[[1,2],[1,1],[0,0],[1,0]],"gems":{"640073":1}},{"cfgid":10525,"cells":[[0,1],[1,1],[2,1],[0,0]],"gems":{"640072":2}},{"cfgid":10526,"cells":[[0,2],[0,1],[0,0],[1,0]],"gems":{"640072":2}},{"cfgid":10527,"cells":[[0,1],[1,1],[2,1],[2,0]],"gems":{"640073":1}},{"cfgid":10528,"cells":[[0,2],[1,2],[1,1],[1,0]],"gems":{"640072":2}},{"cfgid":10529,"cells":[[0,2],[1,2],[0,1],[0,0]],"gems":{"640072":2}},{"cfgid":10530,"cells":[[0,1],[0,0],[1,0],[2,0]],"gems":{"640071":1}},{"cfgid":10531,"cells":[[2,1],[0,0],[1,0],[2,0]],"gems":{"640072":1}},{"cfgid":10532,"cells":[[0,0]],"gems":{"640072":1}}],"502":[{"cfgid":10533,"cells":[[0,0],[1,0],[2,0],[3,0]],"gems":{"640072":1}},{"cfgid":10534,"cells":[[0,0],[1,0],[2,0]],"gems":{"640070":1}},{"cfgid":10535,"cells":[[0,0],[1,0]],"gems":{"640070":1}},{"cfgid":10536,"cells":[[0,1],[1,1],[0,0],[1,0]],"gems":{"640071":1,"640072":1}},{"cfgid":10537,"cells":[[1,1],[0,0],[1,0]],"gems":{"640070":1}},{"cfgid":10538,"cells":[[0,1],[1,1],[0,0]],"gems":{"640071":1,"640072":1}},{"cfgid":10539,"cells":[[0,1],[1,1],[1,0]],"gems":{"640070":1,"640071":1}},{"cfgid":10540,"cells":[[0,1],[0,0],[1,0]],"gems":{"640071":1,"640072":1}},{"cfgid":10541,"cells":[[0,1],[0,0]],"gems":{"640071":1,"640072":1}},{"cfgid":10542,"cells":[[0,2],[0,1],[0,0]],"gems":{"640070":1,"640072":1}},{"cfgid":10543,"cells":[[0,3],[0,2],[0,1],[0,0]],"gems":{"640071":2}},{"cfgid":10544,"cells":[[0,2],[0,1],[0,0],[1,0],[2,0]],"gems":{"640071":2}},{"cfgid":10545,"cells":[[2,2],[2,1],[0,0],[1,0],[2,0]],"gems":{"640070":1,"640072":1}},{"cfgid":10546,"cells":[[0,2],[1,2],[2,2],[0,1],[0,0]],"gems":{"640072":2}},{"cfgid":10547,"cells":[[0,2],[1,2],[2,2],[2,1],[2,0]],"gems":{"640072":2}},{"cfgid":10548,"cells":[[0,1],[1,1],[0,0],[1,0]],"gems":{"640070":1}},{"cfgid":10549,"cells":[[0,0],[1,0]],"gems":{"640070":1}},{"cfgid":10550,"cells":[[0,2],[1,2],[0,1],[1,1],[0,0],[1,0]],"gems":{"640072":2}},{"cfgid":10551,"cells":[[0,1],[0,0]],"gems":{"640072":2}},{"cfgid":10552,"cells":[[0,0],[1,0],[2,0],[3,0],[4,0]],"gems":{"640070":2}},{"cfgid":10553,"cells":[[0,4],[0,3],[0,2],[0,1],[0,0]],"gems":{"640071":1}},{"cfgid":10554,"cells":[[0,1],[1,1],[0,0],[1,0]],"gems":{"640072":1}},{"cfgid":10555,"cells":[[0,2],[1,2],[0,1],[1,1],[0,0],[1,0]],"gems":{"640070":1}},{"cfgid":10556,"cells":[[0,1],[1,1],[2,1],[2,0]],"gems":{"640070":1}},{"cfgid":10557,"cells":[[0,1],[1,1],[2,1],[0,0]],"gems":{"640072":2}},{"cfgid":10558,"cells":[[0,2],[0,1],[0,0],[1,0]],"gems":{"640072":2}},{"cfgid":10559,"cells":[[0,1],[1,1],[2,1],[2,0]],"gems":{"640070":1}},{"cfgid":10560,"cells":[[0,2],[1,2],[1,1],[1,0]],"gems":{"640072":2}},{"cfgid":10561,"cells":[[0,2],[1,2],[0,1],[0,0]],"gems":{"640072":2}},{"cfgid":10562,"cells":[[0,1],[0,0],[1,0],[2,0]],"gems":{"640071":1}},{"cfgid":10563,"cells":[[2,1],[0,0],[1,0],[2,0]],"gems":{"640072":1}},{"cfgid":10564,"cells":[[0,0]],"gems":{}}],"503":[{"cfgid":10565,"cells":[[0,0],[1,0],[2,0],[3,0]],"gems":{"640072":1}},{"cfgid":10566,"cells":[[0,0],[1,0],[2,0]],"gems":{"640073":1}},{"cfgid":10567,"cells":[[0,0],[1,0]],"gems":{"640073":1}},{"cfgid":10568,"cells":[[0,1],[1,1],[0,0],[1,0]],"gems":{"640070":1,"640072":1}},{"cfgid":10569,"cells":[[1,1],[0,0],[1,0]],"gems":{"640073":1}},{"cfgid":10570,"cells":[[0,1],[1,1],[0,0]],"gems":{"640070":1,"640072":1}},{"cfgid":10571,"cells":[[0,1],[1,1],[1,0]],"gems":{"640073":1,"640070":1}},{"cfgid":10572,"cells":[[0,1],[0,0],[1,0]],"gems":{"640070":1,"640072":1}},{"cfgid":10573,"cells":[[0,1],[0,0]],"gems":{"640070":1,"640072":1}},{"cfgid":10574,"cells":[[0,2],[0,1],[0,0]],"gems":{"640073":1,"640072":1}},{"cfgid":10575,"cells":[[0,3],[0,2],[0,1],[0,0]],"gems":{"640070":2}},{"cfgid":10576,"cells":[[0,2],[0,1],[0,0],[1,0],[2,0]],"gems":{"640070":2}},{"cfgid":10577,"cells":[[2,2],[2,1],[0,0],[1,0],[2,0]],"gems":{"640073":1,"640072":1}},{"cfgid":10578,"cells":[[0,2],[1,2],[2,2],[0,1],[0,0]],"gems":{"640072":2}},{"cfgid":10579,"cells":[[0,2],[1,2],[2,2],[2,1],[2,0]],"gems":{"640072":2}},{"cfgid":10580,"cells":[[0,1],[1,1],[0,0],[1,0]],"gems":{"640073":1}},{"cfgid":10581,"cells":[[0,0],[1,0]],"gems":{"640073":1}},{"cfgid":10582,"cells":[[0,2],[1,2],[0,1],[1,1],[0,0],[1,0]],"gems":{"640072":2}},{"cfgid":10583,"cells":[[0,1],[0,0]],"gems":{"640072":2}},{"cfgid":10584,"cells":[[0,0],[1,0],[2,0],[3,0],[4,0]],"gems":{"640073":2}},{"cfgid":10585,"cells":[[0,4],[0,3],[0,2],[0,1],[0,0]],"gems":{"640070":1}},{"cfgid":10586,"cells":[[0,1],[1,1],[0,0],[1,0]],"gems":{"640072":1}},{"cfgid":10587,"cells":[[0,2],[1,2],[0,1],[1,1],[0,0],[1,0]],"gems":{"640073":1}},{"cfgid":10588,"cells":[[0,1],[1,1],[2,1],[2,0]],"gems":{"640073":1}},{"cfgid":10589,"cells":[[0,1],[1,1],[2,1],[0,0]],"gems":{"640072":2}},{"cfgid":10590,"cells":[[0,2],[0,1],[0,0],[1,0]],"gems":{"640072":2}},{"cfgid":10591,"cells":[[0,1],[1,1],[2,1],[2,0]],"gems":{"640073":1}},{"cfgid":10592,"cells":[[0,2],[1,2],[1,1],[1,0]],"gems":{"640072":2}},{"cfgid":10593,"cells":[[0,2],[1,2],[0,1],[0,0]],"gems":{"640072":2}},{"cfgid":10594,"cells":[[0,1],[0,0],[1,0],[2,0]],"gems":{"640070":1}},{"cfgid":10595,"cells":[[2,1],[0,0],[1,0],[2,0]],"gems":{"640072":1}},{"cfgid":10596,"cells":[[0,0]],"gems":{"640072":1}}]},"weights":{"w_sum":0.2,"w_max":0.25,"w_holes":2.0,"crowd_from":16,"w_crowd":0.2,"w_risk":200.0,"stage2_k":40,"risk_samples":64,"la_T":4,"la_k":6,"la_samples":12,"la_dead":30.0,"subst":true,"w_win1":1.0,"win1_k":100,"win1_variants":2}};
+  if (typeof module === 'object' && module.exports) module.exports = DATA; else root.S5Data = DATA;
+}(typeof self !== 'undefined' ? self : this));
+</script>
+<script>// Gold Prospecting (Last War pre-season 5): read the board and the pieces from a screenshot.
+// Pure JavaScript, no dependency: works in the browser (ImageData from a <canvas>) and in Node.
+// recognize({width, height, data}) -> {board, grid, pieces, goals, debug}
+//   grid   : 8 strings, top row first; '.' empty, '#' plain block, A blue, B orange, C green, D pink
+//   pieces : 3 slots left to right, null when empty; each = strings, top row first
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.S5Recognize = factory();
+}(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  // Reference colours measured on screenshots (RGB).
+  const PROTOS = {
+    '.': [[89, 74, 70], [92, 76, 72], [84, 70, 66]],          // empty board cell
+    '#': [[240, 176, 110], [246, 182, 115], [231, 170, 109]],  // plain block (and gems of a finished goal)
+    'A': [[96, 180, 240], [80, 165, 235]],                     // blue gem tile
+    'B': [[253, 224, 150], [246, 210, 125]],                   // orange gem tile (pale yellow)
+    'C': [[142, 207, 142], [151, 223, 160]],                   // green gem tile
+    'D': [[238, 179, 210], [244, 179, 224]],                   // pink gem tile
+  };
+
+  function dist2(a, b) {
+    const dr = a[0] - b[0], dg = a[1] - b[1], db = a[2] - b[2];
+    return dr * dr + dg * dg + db * db;
+  }
+
+  function classify(rgb) {
+    let best = null, bd = Infinity;
+    for (const k in PROTOS) for (const p of PROTOS[k]) {
+      const d = dist2(rgb, p);
+      if (d < bd) { bd = d; best = k; }
+    }
+    return [best, bd];
+  }
+
+  function makeAccess(img) {
+    const { width: W, height: H, data } = img;
+    return {
+      W, H,
+      px(x, y) { const o = ((y | 0) * W + (x | 0)) * 4; return [data[o], data[o + 1], data[o + 2]]; },
+    };
+  }
+
+  // Dark brown of the board's empty cells and grid lines (not the grey frame, not the orange page).
+  function isBoardDark([r, g, b]) {
+    const lum = (r + g + b) / 3;
+    return lum > 45 && lum < 112 && r - b >= 13 && r - b <= 40 && r - g >= 5 && r - g <= 26;
+  }
+
+  // Panel brown of the 3 piece slots under the board.
+  function isPanel([r, g, b]) {
+    return r >= 140 && r <= 190 && g >= 90 && g <= 130 && b >= 50 && b <= 90 && r - g >= 40 && r - g <= 75;
+  }
+
+  // Runs of indexes where values >= threshold; gaps up to maxGap are bridged (thin lines).
+  function runs(values, threshold, minLen, maxGap = 0) {
+    const raw = [];
+    let start = -1;
+    for (let i = 0; i <= values.length; i++) {
+      const on = i < values.length && values[i] >= threshold;
+      if (on && start < 0) start = i;
+      if (!on && start >= 0) { raw.push([start, i - 1]); start = -1; }
+    }
+    const merged = [];
+    for (const r of raw) {
+      const last = merged[merged.length - 1];
+      if (last && r[0] - last[1] - 1 <= maxGap) last[1] = r[1];
+      else merged.push(r.slice());
+    }
+    return merged.filter(([a, b]) => b - a + 1 >= minLen);
+  }
+
+  function findBoard(a) {
+    const { W, H } = a;
+    const rows = new Array(H).fill(0);
+    for (let y = 0; y < H; y++) {
+      let n = 0;
+      for (let x = 0; x < W; x += 2) if (isBoardDark(a.px(x, y))) n++;
+      rows[y] = n * 2 / W;
+    }
+    // the board is the tallest band of rows with dark brown
+    const band = runs(rows, 0.06, H * 0.15, Math.round(H * 0.015)).sort((p, q) => (q[1] - q[0]) - (p[1] - p[0]))[0];
+    if (!band) return null;
+    const [y0, y1] = band;
+    const cols = new Array(W).fill(0);
+    for (let x = 0; x < W; x++) {
+      let n = 0;
+      for (let y = y0; y <= y1; y += 2) if (isBoardDark(a.px(x, y))) n++;
+      cols[x] = n * 2 / (y1 - y0 + 1);
+    }
+    const crun = runs(cols, 0.06, W * 0.3, Math.round(W * 0.015)).sort((p, q) => (q[1] - q[0]) - (p[1] - p[0]))[0];
+    if (!crun) return null;
+    const [x0, x1] = crun;
+    // the grid is square: trust the larger extent (a side full of tiles can shrink the other one)
+    const size = Math.max(x1 - x0 + 1, y1 - y0 + 1);
+    const rough = { x: x0, y: y0, size, cell: size / 8, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+    return refineGrid(a, rough);
+  }
+
+  // Fit of the grid: 7 inner lines darker than the cell centres on both sides, at a regular
+  // step p, searched over the whole rough area (its edges can include the frame).
+  function refineGrid(a, b) {
+    const lum = (rgb) => rgb[0] + rgb[1] + rgb[2];
+    function profile(horizontal) {
+      const from = horizontal ? b.y : b.x, to = from + (horizontal ? b.h : b.w);
+      const lo = horizontal ? b.x : b.y, hi = lo + (horizontal ? b.w : b.h);
+      const prof = new Float64Array(Math.ceil(hi + 2));
+      for (let i = Math.max(0, Math.floor(lo - 2)); i < hi + 2 && i < (horizontal ? a.W : a.H); i++) {
+        let sum = 0, n = 0;
+        for (let t = from; t < to; t += 2) { sum += lum(horizontal ? a.px(i, t) : a.px(t, i)); n++; }
+        prof[i] = sum / Math.max(1, n);
+      }
+      return { prof, lo, hi };
+    }
+    function axis(horizontal) {
+      const { prof, lo, hi } = profile(horizontal);
+      const ext = hi - lo;
+      const at = (x) => { const i = Math.round(x); return i >= 0 && i < prof.length ? prof[i] : 765; };
+      let best = null;
+      for (let p = ext / 8 * 0.6; p <= ext / 8 * 1.04; p += 0.25) {
+        for (let o = lo - p * 0.5; o + 8 * p <= hi + p * 0.5; o += 0.5) {
+          let score = 0;
+          for (let k = 1; k <= 7; k++) {
+            const line = o + k * p;
+            const dip = Math.min(at(line - 1), at(line), at(line + 1));
+            score += (at(line - p / 2) + at(line + p / 2)) / 2 - dip;
+          }
+          if (!best || score > best.score) best = { score, o, p };
+        }
+      }
+      // A shift by whole cells matches the lines almost as well: anchor the 8x8 window on the
+      // board's dark brown (empty cells and grid), the frame and the page around it are not.
+      const from = horizontal ? b.y : b.x, to = from + (horizontal ? b.h : b.w);
+      const mask = (i) => {
+        let n = 0, t = 0;
+        for (let j = from; j < to; j += 3) { t++; if (isBoardDark(horizontal ? a.px(i, j) : a.px(j, i))) n++; }
+        return n / Math.max(1, t);
+      };
+      const cache = new Map();
+      const inside = (o) => {
+        let sum = 0;
+        for (let i = Math.round(o); i < Math.round(o + 8 * best.p); i += 2) {
+          if (!cache.has(i)) cache.set(i, i < 0 || i >= (horizontal ? a.W : a.H) ? 0 : mask(i));
+          sum += cache.get(i) > 0.03 ? 1 : 0;
+        }
+        return sum;
+      };
+      let pick = best.o, pickScore = -1;
+      for (let k = -3; k <= 3; k++) {
+        const o = best.o + k * best.p;
+        const v = inside(o);
+        if (v > pickScore) { pickScore = v; pick = o; }
+      }
+      return { score: best.score, o: pick, p: best.p };
+    }
+    const bx = axis(true), by = axis(false);
+    const cell = (bx.p + by.p) / 2;
+    return { x: bx.o, y: by.o, size: cell * 8, cell, w: b.w, h: b.h, fit: [bx.p, by.p] };
+  }
+
+  // Majority colour class of a square sample inside a cell, ignoring its border and icon centre.
+  function readCell(a, cx, cy, half) {
+    const votes = {};
+    const step = Math.max(1, Math.floor(half / 4));
+    for (let dy = -half; dy <= half; dy += step) {
+      for (let dx = -half; dx <= half; dx += step) {
+        const [k, d] = classify(a.px(cx + dx, cy + dy));
+        if (d > 60 * 60) continue; // icon, outline, anti-aliasing: no vote
+        votes[k] = (votes[k] || 0) + 1;
+      }
+    }
+    let best = '.', bn = 0;
+    for (const k in votes) if (votes[k] > bn) { bn = votes[k]; best = k; }
+    return best;
+  }
+
+  // Small piece cell: a gem tile colour can only come from a gem tile, so 20 % of the votes
+  // are enough to win over the plain block colour (borders, lighter parts of the icon).
+  function readPieceCell(a, cx, cy, half) {
+    const votes = {};
+    let total = 0;
+    const step = Math.max(1, half / 6);
+    for (let dy = -half; dy <= half; dy += step) {
+      for (let dx = -half; dx <= half; dx += step) {
+        const [k, d] = classify(a.px(cx + dx, cy + dy));
+        if (d > 60 * 60 || k === '.') continue;
+        votes[k] = (votes[k] || 0) + 1;
+        total++;
+      }
+    }
+    let gem = null, gn = 0;
+    for (const k of 'ABCD') if ((votes[k] || 0) > gn) { gn = votes[k]; gem = k; }
+    return gem && gn >= total * 0.2 ? gem : '#';
+  }
+
+  function readGrid(a, board) {
+    const grid = [];
+    for (let r = 0; r < 8; r++) {
+      let line = '';
+      for (let c = 0; c < 8; c++) {
+        const cx = board.x + (c + 0.5) * board.cell, cy = board.y + (r + 0.5) * board.cell;
+        // top band of the tile, above its gem icon: tile base colour
+        line += readCell(a, cx, cy - board.cell * 0.3, Math.max(1, board.cell * 0.09));
+      }
+      grid.push(line);
+    }
+    return grid;
+  }
+
+  function findPanels(a, board) {
+    const top = Math.round(board.y + board.size + board.cell * 0.4);
+    const bottom = Math.min(a.H - 1, Math.round(board.y + board.size + board.cell * 4.5));
+    const cols = new Array(a.W).fill(0);
+    for (let x = 0; x < a.W; x++) {
+      let n = 0;
+      for (let y = top; y <= bottom; y += 2) if (isPanel(a.px(x, y))) n++;
+      cols[x] = n * 2 / Math.max(1, bottom - top);
+    }
+    // a tall piece can hide the slot brown over its columns: bridge two parts when the gap
+    // still shows some slot brown (above/below the piece); the page between slots shows none
+    const parts = runs(cols, 0.15, 2);
+    const joined = [];
+    for (const r of parts) {
+      const last = joined[joined.length - 1];
+      let bridge = false;
+      if (last && r[0] - last[1] <= board.cell * 1.6 && r[1] - last[0] + 1 <= board.cell * 3) {
+        bridge = true;
+        for (let x = last[1] + 1; x < r[0]; x++) if (cols[x] < 0.02) { bridge = false; break; }
+      }
+      if (bridge) last[1] = r[1]; else joined.push(r.slice());
+    }
+    const panels = joined.filter(([x0, x1]) => x1 - x0 + 1 >= board.cell * 1.2)
+      .sort((p, q) => (q[1] - q[0]) - (p[1] - p[0])).slice(0, 3).sort((p, q) => p[0] - q[0]);
+    return panels.map(([x0, x1]) => {
+      const rows = [];
+      for (let y = top; y <= bottom; y++) {
+        let n = 0;
+        for (let x = x0; x <= x1; x += 2) if (isPanel(a.px(x, y))) n++;
+        rows.push(n * 2 / (x1 - x0 + 1));
+      }
+      const r = runs(rows, 0.2, board.cell).sort((p, q) => (q[1] - q[0]) - (p[1] - p[0]))[0] || [0, rows.length - 1];
+      return { x0, x1, y0: top + r[0], y1: top + r[1] };
+    });
+  }
+
+  function isTile(rgb) {
+    const [k, d] = classify(rgb);
+    return k !== '.' && d < 70 * 70;
+  }
+
+  function readPieces(a, board, panels) {
+    const scale = 38 / 74 * 0.9; // BlockSizeSmall / BlockSizeLarge, S5 reset scale (game code)
+    const out = [];
+    for (const p of panels) {
+      // tile pixels inside the panel (the panel brown itself is not a tile colour)
+      let minX = Infinity, minY = Infinity, maxX = -1, maxY = -1, count = 0;
+      const m = Math.max(2, Math.round(board.cell * 0.15));
+      for (let y = p.y0 + m; y <= p.y1 - m; y++) {
+        for (let x = p.x0 + m; x <= p.x1 - m; x++) {
+          const rgb = a.px(x, y);
+          if (isPanel(rgb) || !isTile(rgb)) continue;
+          count++;
+          if (x < minX) minX = x; if (x > maxX) maxX = x;
+          if (y < minY) minY = y; if (y > maxY) maxY = y;
+        }
+      }
+      if (count < board.cell * board.cell * scale * scale * 0.5) { out.push(null); continue; }
+      const w = maxX - minX + 1, h = maxY - minY + 1;
+      // piece cell size: the game scale, refined so the bounding box is a whole number of cells
+      let s = board.cell * scale, bestErr = Infinity;
+      for (let k = 0.85; k <= 1.15; k += 0.01) {
+        const t = board.cell * scale * k;
+        const nw = Math.max(1, Math.round(w / t)), nh = Math.max(1, Math.round(h / t));
+        const err = Math.abs(w - nw * t) + Math.abs(h - nh * t);
+        if (err < bestErr) { bestErr = err; s = t; }
+      }
+      const cw = Math.min(5, Math.max(1, Math.round(w / s))), ch = Math.min(5, Math.max(1, Math.round(h / s)));
+      const sx = w / cw, sy = h / ch;
+      const rows = [];
+      for (let r = 0; r < ch; r++) {
+        let line = '';
+        for (let c = 0; c < cw; c++) {
+          const cx = minX + (c + 0.5) * sx, cy = minY + (r + 0.5) * sy;
+          let tile = 0, total = 0;
+          for (let dy = -sy * 0.25; dy <= sy * 0.25; dy += Math.max(1, sy / 8)) {
+            for (let dx = -sx * 0.25; dx <= sx * 0.25; dx += Math.max(1, sx / 8)) {
+              total++;
+              if (!isPanel(a.px(cx + dx, cy + dy))) tile++;  // inside a slot, not slot brown = piece
+            }
+          }
+          line += tile / total < 0.4 ? '.' : readPieceCell(a, cx, cy, sx * 0.38);
+        }
+        rows.push(line);
+      }
+      out.push(rows);
+    }
+    while (out.length < 3) out.push(null);
+    return out;
+  }
+
+  // --- goals (3 frames above the board: gem icon, then "have/need" or a check mark) --------
+
+  // The 5 levels (tables season_s1_block_game 10200-10204): goal colour -> quantity.
+  const LEVELS = {
+    10200: { B: 10, C: 5, D: 5 }, 10201: { A: 5, B: 5, C: 10 }, 10202: { A: 5, C: 5, D: 10 },
+    10203: { A: 10, B: 5, C: 5 }, 10204: { A: 10, C: 5, D: 5 },
+  };
+  const FAMILY = { 10200: 501, 10201: 502, 10202: 503, 10203: 502, 10204: 503 };
+
+  function isWhite([r, g, b]) { return r > 215 && g > 215 && b > 215; }
+
+  // Gem icon colour of a goal frame, from its most saturated pixels.
+  function iconColor(a, x0, x1, y0, y1) {
+    const votes = { A: 0, B: 0, C: 0, D: 0 };
+    for (let y = y0; y < y1; y += 2) {
+      for (let x = x0; x < x1; x += 2) {
+        const [r, g, b] = a.px(x, y);
+        const hi = Math.max(r, g, b), lo = Math.min(r, g, b);
+        if (hi - lo < 90 || isPanel([r, g, b])) continue;
+        if (b > r && b >= g) votes.A++;
+        else if (g > r && g > b) votes.C++;
+        else if (r > g && b > g + 20) votes.D++;
+        else if (r > b && g > b + 60 && g > 120) votes.B++;
+      }
+    }
+    return votes;
+  }
+
+  // Glyphs of the white "have/need" text: column runs of white pixels.
+  function glyphs(a, x0, x1, y0, y1) {
+    const cols = [];
+    for (let x = x0; x < x1; x++) {
+      let n = 0;
+      for (let y = y0; y < y1; y++) if (isWhite(a.px(x, y))) n++;
+      cols.push(n);
+    }
+    const out = [];
+    for (const [c0, c1] of runs(cols, 1, 1)) {
+      let top = Infinity, bottom = -1;
+      for (let x = x0 + c0; x <= x0 + c1; x++) {
+        for (let y = y0; y < y1; y++) if (isWhite(a.px(x, y))) { if (y < top) top = y; if (y > bottom) bottom = y; }
+      }
+      out.push({ x0: x0 + c0, x1: x0 + c1, y0: top, y1: bottom });
+    }
+    // On small screens a digit and the slash touch: a glyph much wider than a digit is cut at
+    // its least white column (twice at most), then each part gets its own height.
+    const split = [];
+    const bounds = (g) => {
+      let top = Infinity, bottom = -1;
+      for (let x = g.x0; x <= g.x1; x++) {
+        for (let y = y0; y < y1; y++) if (isWhite(a.px(x, y))) { if (y < top) top = y; if (y > bottom) bottom = y; }
+      }
+      return { x0: g.x0, x1: g.x1, y0: top, y1: bottom };
+    };
+    const cut = (g, depth) => {
+      const w = g.x1 - g.x0 + 1, h = g.y1 - g.y0 + 1;
+      if (depth > 2 || w <= h * 0.95) { split.push(g); return; }
+      let best = -1, bn = Infinity;
+      for (let x = Math.round(g.x0 + w * 0.3); x <= Math.round(g.x0 + w * 0.7); x++) {
+        let n = 0;
+        for (let y = g.y0; y <= g.y1; y++) if (isWhite(a.px(x, y))) n++;
+        if (n < bn) { bn = n; best = x; }
+      }
+      cut(bounds({ x0: g.x0, x1: best - 1 }), depth + 1);
+      cut(bounds({ x0: best + 1, x1: g.x1 }), depth + 1);
+    };
+    for (const g of out) cut(g, 0);
+    return split.filter((g) => g.y1 >= g.y0);
+  }
+
+  // 5x7 occupancy grid of a glyph (white pixels), plus its aspect ratio.
+  function glyphVector(a, g) {
+    const w = g.x1 - g.x0 + 1, h = g.y1 - g.y0 + 1, v = [];
+    for (let r = 0; r < 7; r++) {
+      for (let c = 0; c < 5; c++) {
+        let n = 0, t = 0;
+        for (let y = g.y0 + r * h / 7; y < g.y0 + (r + 1) * h / 7; y += 1) {
+          for (let x = g.x0 + c * w / 5; x < g.x0 + (c + 1) * w / 5; x += 1) { t++; if (isWhite(a.px(x, y))) n++; }
+        }
+        v.push(t ? n / t : 0);
+      }
+    }
+    v.push(w / h);
+    return v;
+  }
+
+  // A slash leans: its white pixels move left from top to bottom.
+  function isSlash(a, g) {
+    const centre = (y) => {
+      let s = 0, n = 0;
+      for (let x = g.x0; x <= g.x1; x++) if (isWhite(a.px(x, y))) { s += x; n++; }
+      return n ? s / n : null;
+    };
+    const h = g.y1 - g.y0, w = g.x1 - g.x0 + 1;
+    // a slash is a thin stroke: no row of it is white over most of its width (digits have bars)
+    for (let y = g.y0; y <= g.y1; y++) {
+      let n = 0;
+      for (let x = g.x0; x <= g.x1; x++) if (isWhite(a.px(x, y))) n++;
+      if (n > w * 0.6 && w > 3) return false;
+    }
+    const top = centre(Math.round(g.y0 + h * 0.15)), bottom = centre(Math.round(g.y0 + h * 0.85));
+    return top !== null && bottom !== null && top - bottom > (g.x1 - g.x0) * 0.35;
+  }
+
+  // Digit templates learnt from annotated screenshots (test/learn_digits.js rewrites this block).
+  // <digits>
+  let DIGITS = [["0",[0.632,0.931,0.937,0.969,0.672,0.918,0.928,0.422,0.844,0.946,0.985,0.799,0.04,0.684,0.998,1,0.779,0.024,0.656,1,0.993,0.787,0.032,0.672,1,0.949,0.913,0.4,0.832,0.963,0.675,0.996,1,1,0.697,0.802]],["1",[0.485,0.629,0.833,1,0.985,0.814,0.898,1,1,1,0.152,0.375,0.909,1,1,0,0.121,0.758,1,1,0,0.091,0.727,1,1,0,0.091,0.727,1,1,0,0.091,0.716,1,0.989,0.464]],["2",[0.667,1,1,0.963,0.63,0.333,0.333,0.444,1,1,0,0,0.111,1,1,0.111,0.444,0.778,1,0.741,0.889,1,0.667,0.222,0,1,1,0.556,0.333,0.333,1,1,1,1,1,0.75]],["3",[0.833,1,1,0.944,0.556,0.278,0.333,0.556,1,0.944,0,0,0.278,1,0.889,0.111,0.556,0.833,1,0.444,0,0.222,0.444,1,0.889,0.333,0.333,0.444,1,1,0.944,1,1,1,0.667,0.719]],["4",[0,0.111,1,0.556,0,0,0.444,1,0.111,0,0.111,0.778,0.778,0,0,0.444,1,0.444,0.444,0.222,0.889,1,0.778,1,0.889,0.667,0.667,0.778,1,0.889,0,0,0.111,1,0.556,0.875]],["5",[0.964,0.981,0.925,0.894,0.542,0.98,0.812,0.411,0.38,0.208,0.986,0.838,0.465,0.358,0.112,0.827,0.856,0.91,0.959,0.65,0.031,0.037,0.16,0.944,0.978,0.317,0.324,0.391,0.951,0.912,0.954,1,1,0.937,0.529,0.747]],["7",[0.889,1,1,1,1,0.481,0.556,0.63,1,1,0,0,0.111,1,0.778,0,0.037,0.519,1,0.556,0,0.185,0.852,0.778,0.111,0,0.519,1,0.444,0,0.111,0.778,1,0.222,0,0.75]]];
+  // </digits>
+
+  // Holes of a glyph (dark areas enclosed by white): count and vertical centre of each,
+  // used for the digits absent from the learning screenshots (6, 8, 9).
+  function holes(a, g) {
+    const w = g.x1 - g.x0 + 3, h = g.y1 - g.y0 + 3;
+    const white = new Uint8Array(w * h), seen = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const px = g.x0 - 1 + x, py = g.y0 - 1 + y;
+      white[y * w + x] = px >= 0 && py >= 0 && px < a.W && py < a.H && isWhite(a.px(px, py)) ? 1 : 0;
+    }
+    const fill = (start) => {
+      const stack = [start], cells = [];
+      seen[start] = 1;
+      while (stack.length) {
+        const i = stack.pop();
+        cells.push(i);
+        const x = i % w, y = (i / w) | 0;
+        for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          const j = ny * w + nx;
+          if (!seen[j] && !white[j]) { seen[j] = 1; stack.push(j); }
+        }
+      }
+      return cells;
+    };
+    fill(0);  // outside of the glyph (the padding border is never white)
+    const out = [];
+    for (let i = 0; i < w * h; i++) {
+      if (seen[i] || white[i]) continue;
+      const cells = fill(i);
+      if (cells.length < w * h * 0.01) continue;
+      const cy = cells.reduce((s, c) => s + ((c / w) | 0), 0) / cells.length / h;
+      out.push(cy);
+    }
+    return out;
+  }
+
+  function readDigit(vec) {
+    let best = null, bd = Infinity;
+    for (const [digit, tpl] of DIGITS) {
+      let d = 0;
+      for (let i = 0; i < tpl.length; i++) d += (vec[i] - tpl[i]) ** 2 * (i === tpl.length - 1 ? 4 : 1);
+      if (d < bd) { bd = d; best = digit; }
+    }
+    return { digit: best, distance: bd };
+  }
+
+  function readGoals(a, board) {
+    const top = Math.max(0, Math.round(board.y - 3 * board.cell)), bottom = Math.round(board.y - 0.1 * board.cell);
+    const cols = [];
+    for (let x = 0; x < a.W; x++) {
+      let n = 0, t = 0;
+      for (let y = top; y < bottom; y += 2) { t++; if (isPanel(a.px(x, y))) n++; }
+      cols.push(n / t);
+    }
+    const frames = runs(cols, 0.12, board.cell * 0.8, 3).filter(([x0, x1]) => x1 - x0 < board.cell * 2.6);
+    // frames are evenly spaced and centred on the board: rebuild the ones a check mark hides
+    const centre = board.x + board.size / 2;
+    const width = frames.length ? Math.max(...frames.map(([x0, x1]) => x1 - x0)) : board.cell * 1.6;
+    let pitch = board.cell * 2.37;
+    if (frames.length >= 2) {
+      const span = frames[frames.length - 1][0] - frames[0][0];
+      pitch = span / Math.max(1, Math.round(span / pitch));
+    }
+    const slots = [-1, 0, 1].map((k) => {
+      const mid = centre + k * pitch;
+      const found = frames.find(([x0, x1]) => Math.abs((x0 + x1) / 2 - mid) < pitch / 3);
+      return found ? { x0: found[0], x1: found[1], found: true }
+        : { x0: Math.round(mid - width / 2), x1: Math.round(mid + width / 2), found: false };
+    });
+    return slots.map((f) => {
+      // text = white glyphs in the lower part of the frame (and just below it)
+      const textTop = Math.round(board.y - board.cell * 1.6), textBottom = Math.round(board.y - board.cell * 0.6);
+      const gl = glyphs(a, f.x0, f.x1 + 1, textTop, Math.min(a.H, textBottom))
+        .filter((g) => g.y1 - g.y0 >= board.cell * 0.18);
+      const votes = iconColor(a, f.x0, f.x1, top, textTop + Math.round(board.cell * 0.3));
+      const color = Object.keys(votes).sort((p, q) => votes[q] - votes[p])[0];
+      const slash = gl.findIndex((g) => isSlash(a, g));
+      const goal = { color, votes, done: slash < 0, x0: f.x0, x1: f.x1, found: f.found };
+      if (slash >= 0) {
+        const value = (list) => {
+          if (!list.length || !DIGITS.length) return null;
+          let txt = '';
+          for (const g of list) {
+            let digit = readDigit(glyphVector(a, g)).digit;
+            const hs = holes(a, g);
+            // digits never seen in the learning screenshots: decide by their holes
+            if (hs.length >= 2) digit = '8';
+            else if (hs.length === 1 && !'046'.includes(digit) && !'9'.includes(digit)) digit = hs[0] > 0.55 ? '6' : '9';
+            txt += digit;
+          }
+          return Number(txt);
+        };
+        goal.have = value(gl.slice(0, slash));
+        goal.need = gl.length - slash - 1 >= 2 ? 10 : 5;  // "/10" or "/5": no need to read it
+        goal.glyphs = gl.map((g, i) => (i === slash ? '/' : glyphVector(a, g)));
+      }
+      return goal;
+    });
+  }
+
+  // Level from the goals still open (colour, /5 or /10); a finished goal shows a check mark
+  // over its gem, so its colour is the level's remaining one (its icon only breaks ties).
+  function resolveLevel(goals) {
+    const open = goals.filter((g) => !g.done);
+    const doneGoals = goals.filter((g) => g.done);
+    let candidates = Object.entries(LEVELS).filter(([, need]) =>
+      open.every((g) => need[g.color] === g.need) && new Set(open.map((g) => g.color)).size === open.length);
+    if (candidates.length > 1 && doneGoals.length) {
+      const fits = candidates.filter(([, need]) => {
+        const rest = Object.keys(need).filter((c) => !open.some((g) => g.color === c));
+        return doneGoals.every((g) => rest.includes(g.color));
+      });
+      if (fits.length) candidates = fits;
+    }
+    // Still several: harmless when they share the piece family and every unfinished goal
+    // (e.g. 10201/10203 once only orange remains); otherwise the player must choose.
+    let ambiguous = false;
+    if (candidates.length > 1) {
+      const fam = new Set(candidates.map(([id]) => FAMILY[id]));
+      if (fam.size === 1) { ambiguous = true; candidates = [candidates[0]]; }
+    }
+    if (candidates.length !== 1) return { level: null, candidates: candidates.map(([id]) => Number(id)) };
+    const [id, need] = candidates[0];
+    const rest = Object.keys(need).filter((c) => !open.some((g) => g.color === c));
+    doneGoals.forEach((g, i) => { if (!rest.includes(g.color)) g.color = rest[i]; });
+    const counters = {};
+    for (const c of Object.keys(need)) {
+      const g = goals.find((x) => x.color === c);
+      counters[c] = !g || g.done ? need[c] : (g.have ?? null);
+    }
+    return { level: Number(id), need, counters, ambiguous };
+  }
+
+  function recognize(img) {
+    const a = makeAccess(img);
+    const board = findBoard(a);
+    if (!board) return { error: 'board_not_found' };
+    const grid = readGrid(a, board);
+    const panels = findPanels(a, board);
+    const pieces = panels.length === 3 ? readPieces(a, board, panels) : [null, null, null];
+    const goals = readGoals(a, board);
+    const { level, need, counters, candidates, ambiguous } = resolveLevel(goals);
+    return { board, grid, pieces, goals, level, need, counters, ambiguous, debug: { panels, candidates } };
+  }
+
+  function setDigits(templates) { DIGITS = templates; }
+
+  return {
+    recognize, classify, PROTOS, LEVELS, setDigits,
+    _internal: { findBoard, makeAccess, runs, isBoardDark, readGoals, glyphVector, glyphs, isSlash },
+  };
+}));
+</script>
+<script id="solver-src">// Gold Prospecting (Last War pre-season 5) solver.
+// Board: cell i = y*8 + x (y = 0 at the bottom), stored as two uint32: lo = cells 0..31
+// (rows 0-3), hi = cells 32..63 (rows 4-7). Pure JS, usable in a Web Worker or in Node.
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.S5Solver = factory();
+}(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  // --- bit helpers ---------------------------------------------------------------------
+  function pc32(v) {
+    v = v - ((v >>> 1) & 0x55555555);
+    v = (v & 0x33333333) + ((v >>> 2) & 0x33333333);
+    return (((v + (v >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24;
+  }
+  const bitOf = (x, y) => { const i = y * 8 + x; return i < 32 ? [(1 << i) >>> 0, 0] : [0, (1 << (i - 32)) >>> 0]; };
+  const ROW = [], COL = [];
+  for (let y = 0; y < 8; y++) ROW.push(y < 4 ? [(0xff << (8 * y)) >>> 0, 0] : [0, (0xff << (8 * (y - 4))) >>> 0]);
+  for (let x = 0; x < 8; x++) COL.push([(0x01010101 << x) >>> 0, (0x01010101 << x) >>> 0]);
+  const LINES = ROW.concat(COL);  // 0-7 rows, 8-15 columns
+
+  // Deterministic random numbers (mulberry32) for the solver's fixed samples.
+  function rng(seed) {
+    let a = seed >>> 0;
+    const next = () => {
+      a = (a + 0x6d2b79f5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    return { next, int: (n) => Math.floor(next() * n), pick: (list) => list[Math.floor(next() * list.length)] };
+  }
+  function shuffle(list, r) {
+    for (let i = list.length - 1; i > 0; i--) { const j = r.int(i + 1); [list[i], list[j]] = [list[j], list[i]]; }
+    return list;
+  }
+
+  // --- rules, states, pieces -------------------------------------------------------------
+  // rules = {types: [itemid...] sorted, need: [n...]}
+  // state = {lo, hi, g: Uint32-like array [lo0, hi0, lo1, hi1, ...], have: [h...]}
+  function stateKey(s) { return s.lo + ',' + s.hi + ',' + s.g.join(',') + ',' + s.have.join(','); }
+  function isWin(rules, have) { for (let t = 0; t < rules.need.length; t++) if (have[t] < rules.need[t]) return false; return true; }
+
+  // piece = {slot, cfgid, cells: [[x, y, itemid|null]...]}
+  const placementCache = new WeakMap();
+  function placements(piece, rules) {
+    let byTypes = placementCache.get(piece);
+    const key = rules.types.join(',');
+    if (byTypes && byTypes[key]) return byTypes[key];
+    const T = rules.types.length;
+    let w = 0, h = 0;
+    for (const [x, y] of piece.cells) { if (x + 1 > w) w = x + 1; if (y + 1 > h) h = y + 1; }
+    const out = [];
+    for (let y0 = 0; y0 <= 8 - h; y0++) {
+      for (let x0 = 0; x0 <= 8 - w; x0++) {
+        let lo = 0, hi = 0;
+        const g = new Array(2 * T).fill(0);
+        const lines = new Set();
+        for (const [x, y, item] of piece.cells) {
+          const [bl, bh] = bitOf(x0 + x, y0 + y);
+          lo = (lo | bl) >>> 0; hi = (hi | bh) >>> 0;
+          const t = item == null ? -1 : rules.types.indexOf(String(item));
+          if (t >= 0) { g[2 * t] = (g[2 * t] | bl) >>> 0; g[2 * t + 1] = (g[2 * t + 1] | bh) >>> 0; }
+          lines.add(y0 + y); lines.add(8 + x0 + x);
+        }
+        out.push({ x: x0, y: y0, lo, hi, g, lines: [...lines].sort((a, b) => a - b) });
+      }
+    }
+    if (!byTypes) { byTypes = {}; placementCache.set(piece, byTypes); }
+    byTypes[key] = out;
+    return out;
+  }
+  const fits = (s, pl) => !(s.lo & pl.lo) && !(s.hi & pl.hi);
+
+  // Place a (legal) piece, then clear every full row and column at once.
+  function apply(rules, s, pl) {
+    const olo = (s.lo | pl.lo) >>> 0, ohi = (s.hi | pl.hi) >>> 0;
+    let clo = 0, chi = 0, lines = 0;
+    for (const li of pl.lines) {
+      const L = LINES[li];
+      if ((olo & L[0]) >>> 0 === L[0] && (ohi & L[1]) >>> 0 === L[1]) { clo = (clo | L[0]) >>> 0; chi = (chi | L[1]) >>> 0; lines++; }
+    }
+    const T = rules.need.length;
+    const g = new Array(2 * T);
+    for (let i = 0; i < 2 * T; i++) g[i] = (s.g[i] | pl.g[i]) >>> 0;
+    if (!lines) return { state: { lo: olo, hi: ohi, g, have: s.have }, lines: 0, gained: null, win: false };
+    const have = s.have.slice(), gained = new Array(T).fill(0);
+    for (let t = 0; t < T; t++) {
+      const c = pc32(g[2 * t] & clo) + pc32(g[2 * t + 1] & chi);
+      const add = Math.min(c, Math.max(0, rules.need[t] - have[t]));
+      have[t] += add; gained[t] = add;
+      g[2 * t] = (g[2 * t] & ~clo) >>> 0; g[2 * t + 1] = (g[2 * t + 1] & ~chi) >>> 0;
+    }
+    return { state: { lo: (olo & ~clo) >>> 0, hi: (ohi & ~chi) >>> 0, g, have }, lines, gained, win: isWin(rules, have) };
+  }
+
+  function canPlaceAny(s, pieces, rules) {
+    for (const p of pieces) for (const pl of placements(p, rules)) if (fits(s, pl)) return true;
+    return false;
+  }
+
+  // A gem of a goal already met arrives under a goal still open (observed in game).
+  function substitute(piece, rules, have, r) {
+    const done = new Set(), open = [];
+    rules.types.forEach((t, i) => (have[i] >= rules.need[i] ? done.add(t) : open.push(t)));
+    if (!done.size || !open.length) return piece;
+    return { slot: piece.slot, cfgid: piece.cfgid,
+      cells: piece.cells.map(([x, y, v]) => [x, y, v != null && done.has(String(v)) ? r.pick(open) : v]) };
+  }
+
+  // --- gem supply: exact expected number of pieces before enough gems arrived ------------
+  function SupplyModel(vectors, substitution) {
+    const merged = new Map();
+    for (const v of vectors) merged.set(v.join(','), (merged.get(v.join(',')) || 0) + 1 / vectors.length);
+    const base = [...merged].map(([k, q]) => [k.split(',').map(Number), q]);
+    const dists = new Map(), memo = new Map();
+    function dist(done) {
+      const key = done.join('');
+      if (dists.has(key)) return dists.get(key);
+      const openIdx = done.map((d, i) => (d ? -1 : i)).filter((i) => i >= 0);
+      let d = base;
+      if (done.some(Boolean) && openIdx.length) {
+        const m = new Map();
+        for (const [g, q] of base) {
+          let moved = 0;
+          const b = g.map((v, i) => { if (done[i]) { moved += v; return 0; } return v; });
+          const k = openIdx.length;
+          const rec = (left, v, p) => {
+            if (!left) { const key2 = v.join(','); m.set(key2, (m.get(key2) || 0) + p); return; }
+            for (const i of openIdx) { const v2 = v.slice(); v2[i]++; rec(left - 1, v2, p / k); }
+          };
+          rec(moved, b, q);
+        }
+        d = [...m].map(([key2, q]) => [key2.split(',').map(Number), q]);
+      }
+      dists.set(key, d);
+      return d;
+    }
+    function expect(def, done) {
+      if (!def.some((x) => x > 0)) return 0;
+      const key = def.join(',') + '|' + done.join('');
+      if (memo.has(key)) return memo.get(key);
+      let acc = 1, stay = 0;
+      for (const [g, q] of dist(done)) {
+        const nd = def.map((a, i) => Math.max(0, a - g[i]));
+        if (nd.every((v, i) => v === def[i])) stay += q;
+        else acc += q * expect(nd, done);
+      }
+      const v = stay >= 1 ? Infinity : acc / (1 - stay);
+      memo.set(key, v);
+      return v;
+    }
+    return {
+      substitution,
+      expected(deficit, done) {
+        return expect(deficit.map((x) => Math.max(0, x | 0)), substitution && done ? done.map(Boolean) : deficit.map(() => false));
+      },
+    };
+  }
+
+  // --- evaluation of an end-of-batch board ----------------------------------------------
+  function isolatedEmpty(s) {
+    let n = 0;
+    const occ = (x, y) => (y < 4 ? (s.lo >>> (y * 8 + x)) & 1 : (s.hi >>> ((y - 4) * 8 + x)) & 1);
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+      if (occ(x, y)) continue;
+      if ((x > 0 && !occ(x - 1, y)) || (x < 7 && !occ(x + 1, y)) || (y > 0 && !occ(x, y - 1)) || (y < 7 && !occ(x, y + 1))) continue;
+      n++;
+    }
+    return n;
+  }
+
+  function Evaluator(rules, supply, templatePieces, w) {
+    this.rules = rules; this.supply = supply; this.w = w; this.templates = templatePieces;
+    this.cache = new Map(); this.riskCache = new Map(); this.w1Cache = new Map(); this.laCache = new Map();
+    const r = rng(12345);
+    const shapes = templatePieces.map((p) => placements(p, rules).map((pl) => pl));
+    this.riskBatches = [];
+    for (let i = 0; i < w.risk_samples; i++) this.riskBatches.push([r.pick(shapes), r.pick(shapes), r.pick(shapes)]);
+  }
+
+  Evaluator.prototype.done = function (s) { return s.have.map((h, i) => h >= this.rules.need[i]); };
+
+  Evaluator.prototype.clearingCosts = function (s) {
+    const rowEmpty = [], colEmpty = [];
+    const elo = ~s.lo >>> 0, ehi = ~s.hi >>> 0;
+    for (let y = 0; y < 8; y++) rowEmpty.push(y < 4 ? pc32((elo >>> (8 * y)) & 0xff) : pc32((ehi >>> (8 * (y - 4))) & 0xff));
+    for (let x = 0; x < 8; x++) colEmpty.push(pc32(elo & COL[x][0]) + pc32(ehi & COL[x][1]));
+    let total = 0, worst = 0;
+    const deficit = [];
+    for (let t = 0; t < this.rules.need.length; t++) {
+      const rest = this.rules.need[t] - s.have[t];
+      if (rest <= 0) { deficit.push(0); continue; }
+      const costs = [];
+      for (let half = 0; half < 2; half++) {
+        let v = s.g[2 * t + half];
+        while (v) {
+          const low = v & -v, b = 31 - Math.clz32(low), i = b + 32 * half;
+          costs.push(Math.min(rowEmpty[i >> 3], colEmpty[i & 7]));
+          v = (v ^ low) >>> 0;
+        }
+      }
+      costs.sort((a, b) => a - b);
+      const used = costs.slice(0, rest);
+      deficit.push(rest - used.length);
+      for (const c of used) total += c;
+      if (used.length && used[used.length - 1] > worst) worst = used[used.length - 1];
+    }
+    return { deficit, total, worst };
+  };
+
+  Evaluator.prototype.cheap = function (s) {
+    const k = stateKey(s);
+    if (this.cache.has(k)) return this.cache.get(k);
+    const { deficit, total, worst } = this.clearingCosts(s);
+    const w = this.w;
+    const crowd = Math.max(0, pc32(s.lo) + pc32(s.hi) - w.crowd_from);
+    const v = this.supply.expected(deficit, this.done(s)) + w.w_sum * total + w.w_max * worst +
+      w.w_holes * isolatedEmpty(s) + w.w_crowd * crowd * crowd;
+    this.cache.set(k, v);
+    return v;
+  };
+
+  function feasible(lo, hi, batch) {
+    if (!batch.length) return true;
+    for (let i = 0; i < batch.length; i++) {
+      const rest = batch.slice(0, i).concat(batch.slice(i + 1));
+      for (const pl of batch[i]) {
+        if ((lo & pl.lo) || (hi & pl.hi)) continue;
+        const olo = (lo | pl.lo) >>> 0, ohi = (hi | pl.hi) >>> 0;
+        let clo = 0, chi = 0;
+        for (const li of pl.lines) {
+          const L = LINES[li];
+          if ((olo & L[0]) >>> 0 === L[0] && (ohi & L[1]) >>> 0 === L[1]) { clo |= L[0]; chi |= L[1]; }
+        }
+        if (feasible((olo & ~clo) >>> 0, (ohi & ~chi) >>> 0, rest)) return true;
+      }
+      if (batch.length === 1) return false;
+    }
+    return false;
+  }
+
+  // P(the next batch cannot be placed entirely), on fixed sampled batches.
+  Evaluator.prototype.risk = function (s) {
+    const k = s.lo + ',' + s.hi;
+    if (this.riskCache.has(k)) return this.riskCache.get(k);
+    let bad = 0;
+    for (const b of this.riskBatches) if (!feasible(s.lo, s.hi, b)) bad++;
+    const v = bad / this.riskBatches.length;
+    this.riskCache.set(k, v);
+    return v;
+  };
+
+  // Template pieces with their gems shuffled again (variants), built once.
+  Evaluator.prototype.variants = function (seed, count) {
+    const r = rng(seed), out = [];
+    for (const tp of this.templates) {
+      for (let k = 0; k < count; k++) {
+        const items = shuffle(tp.cells.map((c) => c[2]), r);
+        out.push({ slot: 0, cfgid: tp.cfgid, cells: tp.cells.map(([x, y], i) => [x, y, items[i]]) });
+      }
+    }
+    return out;
+  };
+
+  // P(one of the 3 pieces of the next batch wins as soon as it is placed).
+  Evaluator.prototype.pWin1 = function (s) {
+    const k = stateKey(s);
+    if (this.w1Cache.has(k)) return this.w1Cache.get(k);
+    if (!this.w1Pieces) this.w1Pieces = this.variants(4242, Math.max(1, this.w.win1_variants));
+    const r = rng(99);
+    let wins = 0;
+    for (let p of this.w1Pieces) {
+      if (this.supply.substitution) p = substitute(p, this.rules, s.have, r);
+      for (const pl of placements(p, this.rules)) if (fits(s, pl) && apply(this.rules, s, pl).win) { wins++; break; }
+    }
+    const q = wins / this.w1Pieces.length, v = 1 - (1 - q) ** 3;
+    this.w1Cache.set(k, v);
+    return v;
+  };
+
+  // Two batches ahead: expected cost of the next batch over sampled batches.
+  Evaluator.prototype.lookahead = function (s) {
+    const k = stateKey(s);
+    if (this.laCache.has(k)) return this.laCache.get(k);
+    if (!this.inner) {
+      this.inner = Object.create(Evaluator.prototype);
+      Object.assign(this.inner, this, { w: Object.assign({}, this.w, { la_T: 0, stage2_k: 8 }) });
+      this.inner.inner = null;
+      const r = rng(777);
+      this.laBatches = [];
+      for (let i = 0; i < this.w.la_samples; i++) {
+        const batch = [];
+        for (let slot = 0; slot < 3; slot++) {
+          const tp = r.pick(this.templates), items = shuffle(tp.cells.map((c) => c[2]), r);
+          batch.push({ slot, cfgid: tp.cfgid, cells: tp.cells.map(([x, y], j) => [x, y, items[j]]) });
+        }
+        this.laBatches.push(batch);
+      }
+    }
+    let total = 0;
+    this.laBatches.forEach((batch, j) => {
+      if (this.supply.substitution) { const r = rng(j + 1); batch = batch.map((p) => substitute(p, this.rules, s.have, r)); }
+      const p = planBatch(this.rules, s, batch, this.inner);
+      total += p.dead ? this.w.la_dead : p.value;
+    });
+    const v = total / this.laBatches.length;
+    this.laCache.set(k, v);
+    return v;
+  };
+
+  // --- search of one batch ------------------------------------------------------------------
+  function signature(piece, rules) {
+    return piece.cells.map(([x, y, v]) => x + ':' + y + ':' + (v != null && rules.types.includes(String(v)) ? v : '')).sort().join(';');
+  }
+
+  // Best sequence for the visible pieces: all orders and positions, deduplicated states,
+  // dead ends removed; shortest win if any, otherwise the best end state by evaluation.
+  function planBatch(rules, state, pieces, ev, maxFrontier = 60000) {
+    const t0 = Date.now();
+    const sigs = pieces.map((p) => signature(p, rules));
+    const canon = sigs.map((s) => sigs.indexOf(s));
+    const n = pieces.length;
+    let frontier = new Map([[canon.slice().sort().join(',') + '|' + stateKey(state), { s: state, path: [], rem: canon.slice().sort() }]]);
+    let bestWin = null, ends = null, nodes = 0;
+    for (let depth = 1; depth <= n; depth++) {
+      const next = new Map();
+      for (const { s, path, rem } of frontier.values()) {
+        const tried = new Set();
+        for (let i = 0; i < n; i++) {
+          const c = canon[i];
+          if (!rem.includes(c) || tried.has(c) || path.some((m) => m.i === i)) continue;
+          tried.add(c);
+          const rest = rem.slice(); rest.splice(rest.indexOf(c), 1);
+          for (const pl of placements(pieces[i], rules)) {
+            if (!fits(s, pl)) continue;
+            nodes++;
+            const out = apply(rules, s, pl);
+            const step = { i, pl, out };
+            if (out.win) { if (!bestWin) bestWin = path.concat([step]); continue; }
+            const key = rest.join(',') + '|' + stateKey(out.state);
+            if (!next.has(key)) next.set(key, { s: out.state, path: path.concat([step]), rem: rest });
+          }
+        }
+      }
+      if (bestWin) break;
+      if (depth === n) { ends = next; break; }
+      if (next.size > maxFrontier) {
+        frontier = new Map([...next].sort((a, b) => ev.cheap(a[1].s) - ev.cheap(b[1].s)).slice(0, maxFrontier));
+      } else frontier = next;
+    }
+    const stats = { nodes, ms: 0 };
+    const moves = (path) => path.map(({ i, pl, out }) => ({ slot: pieces[i].slot, cfgid: pieces[i].cfgid, x: pl.x, y: pl.y,
+      lines: out.lines, gained: out.gained, win: out.win }));
+    if (bestWin) {
+      stats.ms = Date.now() - t0;
+      return { moves: moves(bestWin), win: true, dead: false, value: bestWin.length, end: bestWin[bestWin.length - 1].out.state, stats };
+    }
+    if (!ends || !ends.size) { stats.ms = Date.now() - t0; return { moves: [], win: false, dead: true, value: Infinity, end: null, stats }; }
+    const scored = [...ends.values()].map(({ s, path }) => ({ c: ev.cheap(s), s, path })).sort((a, b) => a.c - b.c);
+    stats.endStates = scored.length;
+    const w = ev.w;
+    const startDeficit = w.la_T > 0 ? ev.clearingCosts(state).deficit : null;
+    const nearEnd = w.la_T > 0 && ev.supply.expected(startDeficit, ev.done(state)) <= w.la_T + n;
+    const pool = scored.slice(0, Math.max(1, nearEnd && w.w_win1 > 0 ? Math.max(w.stage2_k, w.win1_k) : w.stage2_k));
+    const score = ({ c, s }) => {
+      if (!(nearEnd && w.w_win1 > 0)) return c + w.w_risk * ev.risk(s);
+      const p1 = ev.pWin1(s);
+      return p1 + (1 - p1) * (c + w.w_risk * ev.risk(s) + w.w_win1);
+    };
+    const ranked = pool.map((e) => ({ v: score(e), s: e.s, path: e.path })).sort((a, b) => a.v - b.v);
+    let best = ranked[0];
+    if (nearEnd) {
+      best = null;
+      for (const e of ranked.slice(0, w.la_k)) {
+        const v = ev.lookahead(e.s);
+        if (!best || v < best.v) best = { v, s: e.s, path: e.path };
+      }
+      stats.lookahead = Math.min(w.la_k, ranked.length);
+    }
+    stats.ms = Date.now() - t0;
+    return { moves: moves(best.path), win: false, dead: false, value: n + best.v, end: best.s, stats };
+  }
+
+  // --- levels and the public entry point ------------------------------------------------------
+  const LETTER = { A: '640070', B: '640071', C: '640072', D: '640073' };
+
+  function levelSetup(data, levelId) {
+    const lv = data.levels.find((l) => l.id === levelId);
+    if (!lv) throw new Error('niveau inconnu ' + levelId);
+    const types = Object.keys(lv.targets).sort();
+    const rules = { types, need: types.map((t) => lv.targets[t]) };
+    const templates = data.piece_groups[lv.piece_group];
+    const r = rng(0);
+    // template pieces (gems on random cells; only shapes and gem counts matter here)
+    const tpl = templates.map((t) => {
+      const items = [];
+      for (const [item, k] of Object.entries(t.gems)) for (let i = 0; i < k; i++) items.push(item);
+      const pos = shuffle(t.cells.map((_, i) => i), r).slice(0, items.length);
+      const cells = t.cells.map(([x, y]) => [x, y, null]);
+      pos.forEach((p, i) => { cells[p][2] = items[i]; });
+      return { slot: 0, cfgid: t.cfgid, cells };
+    });
+    const supply = SupplyModel(templates.map((t) => types.map((x) => t.gems[x] || 0)), !!data.weights.subst);
+    return { lv, rules, tpl, supply, templates };
+  }
+
+  const setups = new Map();
+
+  // Board (8 strings, top row first; '.', '#', A-D), pieces (strings, top row first, or null)
+  // and counters {A: have...} -> advised placements for the pieces in hand.
+  function solve(data, input) {
+    const { level } = input;
+    if (!setups.has(level)) {
+      const su = levelSetup(data, level);
+      su.ev = new Evaluator(su.rules, su.supply, su.tpl, data.weights);
+      setups.set(level, su);
+    }
+    const su = setups.get(level);
+    const { state, hand } = prepare(su.rules, input);
+    if (su.ev.cache.size > 300000) { su.ev.cache.clear(); su.ev.riskCache.clear(); su.ev.w1Cache.clear(); su.ev.laCache.clear(); }
+    if (!hand.length) return { moves: [], waiting: true };
+    return planBatch(su.rules, state, hand, su.ev);
+  }
+
+  // Page format (grid strings, piece strings, counters by letter) -> engine state and hand.
+  function prepare(rules, { grid, pieces, counters }) {
+    const T = rules.types.length;
+    let lo = 0, hi = 0;
+    const g = new Array(2 * T).fill(0);
+    grid.forEach((line, r) => {
+      const y = 7 - r;
+      for (let x = 0; x < 8; x++) {
+        const ch = line[x];
+        if (ch === '.') continue;
+        const [bl, bh] = bitOf(x, y);
+        lo = (lo | bl) >>> 0; hi = (hi | bh) >>> 0;
+        const t = ch === '#' ? -1 : rules.types.indexOf(LETTER[ch]);
+        if (t >= 0) { g[2 * t] = (g[2 * t] | bl) >>> 0; g[2 * t + 1] = (g[2 * t + 1] | bh) >>> 0; }
+      }
+    });
+    const have = rules.types.map((t) => {
+      const letter = Object.keys(LETTER).find((k) => LETTER[k] === t);
+      return Math.min(rules.need[rules.types.indexOf(t)], (counters || {})[letter] || 0);
+    });
+    const state = { lo, hi, g, have };
+    const hand = [];
+    (pieces || []).forEach((rows, slot) => {
+      if (!rows) return;
+      const cells = [];
+      rows.forEach((line, r) => {
+        const y = rows.length - 1 - r;
+        for (let x = 0; x < line.length; x++) {
+          const ch = line[x];
+          if (ch === '.') continue;
+          cells.push([x, y, ch === '#' ? null : LETTER[ch]]);
+        }
+      });
+      const mx = Math.min(...cells.map((c) => c[0])), my = Math.min(...cells.map((c) => c[1]));
+      hand.push({ slot, cfgid: null, cells: cells.map(([x, y, v]) => [x - mx, y - my, v]) });
+    });
+    return { state, hand };
+  }
+
+  return { solve, prepare, planBatch, apply, placements, SupplyModel, Evaluator, levelSetup, substitute, canPlaceAny, rng, LETTER, stateKey, _pc32: pc32, _bitOf: bitOf };
+}));
+</script>
+<script>
+'use strict';
+const T = {
+  fr: { title: 'Gold Prospecting · solveur', drop: "Collez une capture d'écran (Ctrl+V) ou glissez-la ici", pick: 'Choisir une capture',
+        level: 'Niveau', edit: 'Corriger', done: 'Terminer', solve: 'Calculer', reading: 'Lecture de la capture…',
+        notfound: "Plateau introuvable : prenez une capture de tout l'écran du mini-jeu.", read: 'Capture lue en {ms} ms. Vérifiez le plateau, puis Calculer.',
+        computing: 'Calcul…', win: 'Victoire avec ce lot en {n} coup(s) !', dead: 'Aucune suite ne permet de poser toutes les pièces.',
+        step: '{k}. Pièce {slot} → colonne {col}, rangée {row} (depuis le bas)', nopieces: 'Aucune pièce en main.',
+        edithint: 'Touchez une case pour changer sa couleur (vide → bloc → bleu → orange → vert → rose).',
+        ambiguous: 'Niveau déduit des objectifs restants (sans effet sur le conseil).', nolevel: 'Niveau non reconnu : choisissez-le.',
+        footer: "Tout se passe dans votre navigateur : aucune image n'est envoyée. Le solveur conseille, il ne joue pas à votre place.",
+        after: '(sur des cases libérées par la pose précédente)',
+        time: '{ms} ms' },
+  en: { title: 'Gold Prospecting · solver', drop: 'Paste a screenshot (Ctrl+V) or drop it here', pick: 'Choose a screenshot',
+        level: 'Level', edit: 'Fix', done: 'Done', solve: 'Solve', reading: 'Reading the screenshot…',
+        notfound: 'Board not found: take a screenshot of the whole mini-game screen.', read: 'Screenshot read in {ms} ms. Check the board, then Solve.',
+        computing: 'Computing…', win: 'Win with this batch in {n} move(s)!', dead: 'No sequence can place every piece.',
+        step: '{k}. Piece {slot} → column {col}, row {row} (from the bottom)', nopieces: 'No piece in hand.',
+        edithint: 'Tap a cell to change its colour (empty → block → blue → orange → green → pink).',
+        ambiguous: 'Level deduced from the remaining goals (no effect on the advice).', nolevel: 'Level not recognised: choose it.',
+        footer: 'Everything runs in your browser: no image is sent. The solver advises, it does not play for you.',
+        after: '(on cells freed by the previous placement)',
+        time: '{ms} ms' },
+  vi: { title: 'Đào vàng · bộ giải', drop: 'Dán ảnh chụp màn hình (Ctrl+V) hoặc kéo thả vào đây', pick: 'Chọn ảnh chụp',
+        level: 'Cấp độ', edit: 'Sửa', done: 'Xong', solve: 'Giải', reading: 'Đang đọc ảnh…',
+        notfound: 'Không thấy bàn chơi: hãy chụp toàn bộ màn hình trò chơi nhỏ.', read: 'Đã đọc ảnh trong {ms} ms. Kiểm tra bàn chơi rồi bấm Giải.',
+        computing: 'Đang tính…', win: 'Thắng với lượt khối này sau {n} nước!', dead: 'Không có cách nào đặt hết các khối.',
+        step: '{k}. Khối {slot} → cột {col}, hàng {row} (tính từ dưới)', nopieces: 'Không có khối nào.',
+        edithint: 'Chạm vào một ô để đổi màu (trống → khối → xanh dương → cam → xanh lá → hồng).',
+        ambiguous: 'Cấp độ suy ra từ các mục tiêu còn lại (không ảnh hưởng gợi ý).', nolevel: 'Không nhận ra cấp độ: hãy chọn.',
+        footer: 'Mọi thứ chạy trong trình duyệt: không gửi ảnh đi đâu. Bộ giải chỉ gợi ý, không chơi thay bạn.',
+        after: '(trên các ô vừa được giải phóng bởi nước trước)',
+        time: '{ms} ms' },
+};
+let lang = (navigator.language || 'fr').slice(0, 2);
+if (!T[lang]) lang = 'en';
+try { lang = localStorage.getItem('s5lang') || lang; } catch (e) {}
+const t = (k, v = {}) => (T[lang][k] || k).replace(/\{(\w+)\}/g, (_, n) => v[n]);
+const $ = (id) => document.getElementById(id);
+const CYCLE = ['.', '#', 'A', 'B', 'C', 'D'];
+const STEP = ['var(--s1)', 'var(--s2)', 'var(--s3)'];
+const LEVEL_GOALS = S5Recognize.LEVELS;
+
+const st = { level: null, grid: null, pieces: [null, null, null], counters: {}, plan: null, editing: false };
+
+// --- worker built from this very page (works from a file, offline) -----------------------
+let worker = null, jobs = 0;
+try {
+  const src = document.querySelector('script').textContent + '\n' + $('solver-src').textContent +
+    '\nself.onmessage = (e) => { const r = S5Solver.solve(S5Data, e.data.input); self.postMessage({ id: e.data.id, result: r }); };';
+  worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+} catch (e) { worker = null; }
+function solveAsync(input) {
+  return new Promise((resolve) => {
+    if (!worker) { setTimeout(() => resolve(S5Solver.solve(S5Data, input)), 20); return; }
+    const id = ++jobs;
+    const on = (e) => { if (e.data.id === id) { worker.removeEventListener('message', on); resolve(e.data.result); } };
+    worker.addEventListener('message', on);
+    worker.postMessage({ id, input });
+  });
+}
+
+// --- rendering ---------------------------------------------------------------------------
+function gemEl(letter) {
+  const d = document.createElement('div');
+  d.className = 'gem';
+  d.style.background = `var(--mark${letter})`;
+  return d;
+}
+function cellEl(ch, mini) {
+  const c = document.createElement('div');
+  c.className = 'cell' + (ch === '#' ? ' b' : 'ABCD'.includes(ch) && ch !== '' ? ' g' + ch : '') + (mini && ch === '.' ? ' e' : '');
+  if ('ABCD'.includes(ch) && ch) c.appendChild(gemEl(ch));
+  return c;
+}
+function overlays() {
+  const out = new Map(), badges = {};
+  if (!st.plan || !st.plan.moves) return { out, badges };
+  st.plan.moves.forEach((m, k) => {
+    const rows = st.pieces[m.slot];
+    if (!rows) return;
+    badges[m.slot] = k;
+    rows.forEach((line, r) => {
+      for (let x = 0; x < line.length; x++) {
+        if (line[x] === '.') continue;
+        const y = rows.length - 1 - r;
+        out.set((m.x + x) + ',' + (m.y + y), { k, gem: line[x] });
+      }
+    });
+  });
+  return { out, badges };
+}
+function render() {
+  document.querySelectorAll('[data-t]').forEach((el) => { el.textContent = t(el.dataset.t); });
+  $('edit').textContent = st.editing ? t('done') : t('edit');
+  $('edithint').hidden = !st.editing;
+  $('game').classList.toggle('editing', st.editing);
+  $('lang').value = lang;
+  // level selector
+  const sel = $('level');
+  if (!sel.options.length) for (const id of Object.keys(LEVEL_GOALS)) sel.add(new Option(id, id));
+  sel.value = st.level || '';
+  // goals
+  const goals = $('goals'); goals.innerHTML = '';
+  const need = LEVEL_GOALS[st.level] || {};
+  for (const [c, n] of Object.entries(need)) {
+    const g = document.createElement('div'); g.className = 'goal';
+    const gem = gemEl(c); gem.style.background = `var(--${c})`; gem.style.border = `2px solid var(--mark${c})`;
+    const minus = document.createElement('button'); minus.textContent = '−';
+    const plus = document.createElement('button'); plus.textContent = '+';
+    const val = document.createElement('span'); val.textContent = `${st.counters[c] ?? 0}/${n}`;
+    minus.onclick = () => { st.counters[c] = Math.max(0, (st.counters[c] ?? 0) - 1); st.plan = null; render(); };
+    plus.onclick = () => { st.counters[c] = Math.min(n, (st.counters[c] ?? 0) + 1); st.plan = null; render(); };
+    g.append(gem, minus, val, plus);
+    goals.appendChild(g);
+  }
+  // board
+  const { out, badges } = overlays();
+  const board = $('board'); board.innerHTML = '';
+  for (let r = 0; r < 8; r++) for (let x = 0; x < 8; x++) {
+    const y = 7 - r, ch = st.grid ? st.grid[r][x] : '.';
+    const c = cellEl(ch);
+    const o = out.get(x + ',' + y);
+    if (o) {
+      const m = document.createElement('div'); m.className = 'mark';
+      m.style.borderColor = STEP[o.k % 3]; m.style.color = STEP[o.k % 3]; m.textContent = o.k + 1;
+      if ('ABCD'.includes(o.gem)) m.style.background = `color-mix(in srgb, var(--${o.gem}) 45%, transparent)`;
+      c.appendChild(m);
+    }
+    c.onclick = () => {
+      if (!st.editing) return;
+      const line = st.grid[r].split('');
+      line[x] = CYCLE[(CYCLE.indexOf(line[x]) + 1) % CYCLE.length];
+      st.grid[r] = line.join(''); st.plan = null; render();
+    };
+    board.appendChild(c);
+  }
+  // pieces
+  const pieces = $('pieces'); pieces.innerHTML = '';
+  for (let slot = 0; slot < 3; slot++) {
+    const rows = st.pieces[slot];
+    const p = document.createElement('div'); p.className = 'piece';
+    const num = document.createElement('div'); num.className = 'num'; num.textContent = slot + 1; p.appendChild(num);
+    if (badges[slot] !== undefined) {
+      p.style.borderColor = STEP[badges[slot] % 3];
+      const b = document.createElement('div'); b.className = 'badge'; b.style.color = STEP[badges[slot] % 3];
+      b.textContent = '→ ' + (badges[slot] + 1); p.appendChild(b);
+    }
+    const mini = document.createElement('div'); mini.className = 'mini';
+    const h = rows ? rows.length : 0, w = rows ? Math.max(...rows.map((l) => l.length)) : 0;
+    for (let r = 0; r < 5; r++) for (let x = 0; x < 5; x++) {
+      const rr = r - (5 - h), ch = rows && rr >= 0 && x < w ? (rows[rr][x] || '.') : '.';
+      const c = cellEl(ch, true);
+      c.onclick = () => {
+        if (!st.editing) return;
+        const grid5 = [];
+        for (let i = 0; i < 5; i++) {
+          const ri = i - (5 - h);
+          grid5.push(Array.from({ length: 5 }, (_, j) => (rows && ri >= 0 && j < w ? (rows[ri][j] || '.') : '.')));
+        }
+        grid5[r][x] = CYCLE[(CYCLE.indexOf(grid5[r][x]) + 1) % CYCLE.length];
+        st.pieces[slot] = trimPiece(grid5); st.plan = null; render();
+      };
+      mini.appendChild(c);
+    }
+    p.appendChild(mini);
+    pieces.appendChild(p);
+  }
+  // advice
+  const adv = $('advice');
+  if (st.plan) {
+    adv.hidden = false;
+    if (st.plan.dead) adv.textContent = t('dead');
+    else if (st.plan.waiting) adv.textContent = t('nopieces');
+    else {
+      const lines = [];
+      if (st.plan.win) lines.push(t('win', { n: st.plan.moves.length }));
+      st.plan.moves.forEach((m, k) => {
+        // a later placement can land on cells that the previous one clears: say so
+        const rows = st.pieces[m.slot] || [];
+        let onFilled = false;
+        rows.forEach((line, r) => {
+          for (let x = 0; x < line.length; x++) {
+            if (line[x] === '.') continue;
+            const y = m.y + rows.length - 1 - r, gx = m.x + x;
+            if (st.grid[7 - y] && st.grid[7 - y][gx] !== '.') onFilled = true;
+          }
+        });
+        lines.push(t('step', { k: k + 1, slot: m.slot + 1, col: m.x + 1, row: m.y + 1 }) + (onFilled ? ' ' + t('after') : ''));
+      });
+      lines.push(t('time', { ms: st.plan.stats ? st.plan.stats.ms : '?' }));
+      adv.textContent = lines.join('\n');
+    }
+  } else adv.hidden = true;
+}
+function trimPiece(grid5) {
+  const cells = [];
+  grid5.forEach((row, r) => row.forEach((ch, x) => { if (ch !== '.') cells.push([r, x]); }));
+  if (!cells.length) return null;
+  const r0 = Math.min(...cells.map((c) => c[0])), r1 = Math.max(...cells.map((c) => c[0]));
+  const x0 = Math.min(...cells.map((c) => c[1])), x1 = Math.max(...cells.map((c) => c[1]));
+  const out = [];
+  for (let r = r0; r <= r1; r++) out.push(grid5[r].slice(x0, x1 + 1).join(''));
+  return out;
+}
+
+// --- screenshot input ----------------------------------------------------------------------
+async function readImage(blob) {
+  $('status').textContent = t('reading');
+  const url = URL.createObjectURL(blob);
+  const img = new Image();
+  await new Promise((ok, ko) => { img.onload = ok; img.onerror = ko; img.src = url; });
+  const canvas = document.createElement('canvas');
+  canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0);
+  URL.revokeObjectURL(url);
+  const t0 = performance.now();
+  const res = S5Recognize.recognize(ctx.getImageData(0, 0, canvas.width, canvas.height));
+  const ms = Math.round(performance.now() - t0);
+  if (res.error) { $('status').textContent = t('notfound'); return; }
+  st.grid = res.grid.slice();
+  st.pieces = res.pieces.slice();
+  st.level = res.level || st.level;
+  st.counters = Object.assign({}, res.counters || {});
+  st.plan = null;
+  $('game').hidden = false;
+  $('status').textContent = t('read', { ms }) + (res.level ? (res.ambiguous ? ' ' + t('ambiguous') : '') : ' ' + t('nolevel'));
+  render();
+  if (st.level) solve();
+}
+async function solve() {
+  if (!st.level || !st.grid) { $('status').textContent = t('nolevel'); return; }
+  $('solve').disabled = true; $('status').textContent = t('computing');
+  st.plan = await solveAsync({ level: Number(st.level), grid: st.grid, pieces: st.pieces, counters: st.counters });
+  $('solve').disabled = false; $('status').textContent = '';
+  render();
+}
+
+document.addEventListener('paste', (e) => {
+  for (const item of e.clipboardData.items) if (item.type.startsWith('image/')) { readImage(item.getAsFile()); e.preventDefault(); return; }
+});
+const drop = $('drop');
+drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); const f = e.dataTransfer.files[0]; if (f) readImage(f); });
+$('pick').onclick = () => $('file').click();
+$('file').onchange = () => { const f = $('file').files[0]; if (f) readImage(f); $('file').value = ''; };
+$('solve').onclick = solve;
+$('edit').onclick = () => { st.editing = !st.editing; render(); };
+$('level').onchange = () => { st.level = Number($('level').value); st.plan = null; render(); };
+$('lang').onchange = () => { lang = $('lang').value; try { localStorage.setItem('s5lang', lang); } catch (e) {} render(); };
+render();
+</script>
+</body>
+</html>
