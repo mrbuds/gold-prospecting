@@ -112,19 +112,26 @@
       }
       return { prof, lo, hi };
     }
-    function axis(horizontal) {
+    function axis(horizontal, fixedPitch) {
       const { prof, lo, hi } = profile(horizontal);
       const ext = hi - lo;
       const at = (x) => { const i = Math.round(x); return i >= 0 && i < prof.length ? prof[i] : 765; };
       let best = null;
-      for (let p = ext / 8 * 0.6; p <= ext / 8 * 1.04; p += 0.25) {
+      for (let p = fixedPitch ? fixedPitch * 0.99 : ext / 8 * 0.6;
+        p <= (fixedPitch ? fixedPitch * 1.01 : ext / 8 * 1.04); p += 0.25) {
         for (let o = lo - p * 0.5; o + 8 * p <= hi + p * 0.5; o += 0.5) {
           let score = 0;
+          const dips = [];
           for (let k = 1; k <= 7; k++) {
             const line = o + k * p;
             const dip = Math.min(at(line - 1), at(line), at(line + 1));
-            score += (at(line - p / 2) + at(line + p / 2)) / 2 - dip;
+            const contrast = (at(line - p / 2) + at(line + p / 2)) / 2 - dip;
+            score += contrast;
+            if (b.squareFit) dips.push(contrast);
           }
+          // A glowing completed row can dominate the average profile. Fit
+          // the repeating grid using the remaining lines, not that outlier.
+          if (b.squareFit) score = dips.reduce((sum, value) => sum + Math.max(-20, Math.min(20, value)), 0);
           if (!best || score > best.score) best = { score, o, p };
         }
       }
@@ -153,7 +160,16 @@
       }
       return { score: best.score, o: pick, p: best.p };
     }
-    const bx = axis(true), by = axis(false);
+    let bx = axis(true), by = axis(false);
+    if (b.squareFit && Math.abs(bx.p - by.p) > Math.max(bx.p, by.p) * 0.08) {
+      if (bx.score >= by.score) {
+        b = { ...b, x: bx.o, w: bx.p * 8 };
+        by = axis(false, bx.p);
+      } else {
+        b = { ...b, y: by.o, h: by.p * 8 };
+        bx = axis(true, by.p);
+      }
+    }
     const cell = (bx.p + by.p) / 2;
     return { x: bx.o, y: by.o, size: cell * 8, cell, w: b.w, h: b.h, fit: [bx.p, by.p] };
   }
@@ -548,8 +564,8 @@
     return { level: Number(id), need, counters, ambiguous };
   }
 
-  function recognizeArea(a) {
-    const board = findBoard(a);
+  function recognizeArea(a, candidate) {
+    const board = candidate ? refineGrid(a, candidate) : findBoard(a);
     if (!board) return { error: 'board_not_found' };
     const grid = readGrid(a, board);
     const panels = findPanels(a, board);
@@ -601,7 +617,8 @@
       }
       const rw = x1 - x0 + 1, rh = y1 - y0 + 1;
       if (rw >= 24 && rh >= 24 && rw / rh > 0.65 && rw / rh < 1.5 && tail > rw * rh * 0.12) {
-        regions.push({ x: x0 * scale, y: y0 * scale, size: Math.max(rw, rh) * scale, area: tail });
+        regions.push({ x: x0 * scale, y: y0 * scale, w: rw * scale, h: rh * scale,
+          size: Math.max(rw, rh) * scale, area: tail });
       }
     }
     for (const region of regions.sort((p, q) => q.area - p.area).slice(0, 12)) {
@@ -609,7 +626,13 @@
       const oy = Math.max(0, Math.floor(region.y - region.size * 0.5));
       const width = Math.min(a.W - ox, Math.ceil(region.size * 1.36));
       const height = Math.min(a.H - oy, Math.ceil(region.size * 2.1));
-      const result = recognizeArea({ W: width, H: height, px: (x, y) => a.px(x + ox, y + oy) });
+      const access = { W: width, H: height, px: (x, y) => a.px(x + ox, y + oy) };
+      let result = recognizeArea(access);
+      // A complete bright row can split the dark row bands. The connected
+      // region still follows the frame, so use its full extent as a fallback.
+      if (!validBoard(result, width, height) || !result.level) {
+        result = recognizeArea(access, { ...region, x: region.x - ox, y: region.y - oy, squareFit: true });
+      }
       if (!validBoard(result, width, height) || !result.level) continue;
       const b = result.board;
       b.x += ox; b.y += oy;

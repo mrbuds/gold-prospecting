@@ -52,3 +52,18 @@ assert.equal(recognize(blank).error, 'board_not_found');
 console.log('No game: rejected');
 assert.equal(recognize(web).error, 'board_not_found');
 console.log('Web solver alone: rejected');
+
+// Optional private desktop screenshot, kept outside the public repository.
+// Captured during a line-clear animation: assert localization and counters,
+// not tile colours affected by the glow.
+if (process.argv[2]) {
+  const got = recognize(readPng(process.argv[2]));
+  assert.equal(got.error, undefined);
+  assert.ok(Math.abs(got.board.x - 444) < 6);
+  assert.ok(Math.abs(got.board.y - 545) < 6);
+  assert.ok(Math.abs(got.board.cell - 49) < 2);
+  assert.equal(got.level, 10200);
+  assert.deepEqual(got.counters, { B: 3, C: 5, D: 3 });
+  assert.deepEqual(got.pieces, [null, null, null]);
+  console.log('Real desktop with YouTube and solver UI: game localized, counters OK');
+}
