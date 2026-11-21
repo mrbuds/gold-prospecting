@@ -58,4 +58,5 @@ for (const [label, k, amp] of variants) {
   }
   const n = Object.keys(truth).length;
   console.log(`${label.padEnd(16)} captures parfaites ${ok}/${n} · cases ${cellsOk}/${n * 64} · pièces ${piecesOk}/${n * 3} · ${Math.round(ms / n)} ms/capture`);
+  if (ok !== n) process.exitCode = 1;
 }

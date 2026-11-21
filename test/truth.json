@@ -1,6 +1,9 @@
 {
  "_doc": "Contenu attendu des captures (dossier images de la conversation). grid : 8 lignes, la 1re = rangée du HAUT ; '.' vide, '#' bloc (y compris les gemmes d'un objectif terminé, affichées comme des blocs), A bleu, B orange, C vert, D rose. pieces : 3 emplacements de gauche à droite, null = vide, formes du haut vers le bas. goals : couleurs des objectifs et quantité demandée.",
  "images": {
+  "desktop.png": {"level": 10200, "goals": {"B": 10, "C": 5, "D": 5}, "counters": {"B": 3, "C": 1, "D": 0},
+                  "grid": ["........", "........", "#.......", "....#.D#", "#BDC.##B", "C#C...#B", "...#B##C", "....#..."],
+                  "pieces": [null, [".#", "##", ".D"], [".#", "D#", ".#"]]},
   "1.png":  {"level": 10200, "goals": {"B": 10, "C": 5, "D": 5},
              "grid": ["........", "........", "........", "...BC...", "..D..#..", "........", "........", "........"],
              "pieces": [["D#", ".B"], [".#", "#D", ".#"], ["##", "BC"]]},

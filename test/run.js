@@ -42,3 +42,4 @@ for (const [name, want] of Object.entries(truth)) {
   for (const line of badPieces) console.log('   ', line);
 }
 console.log(`\nCases : ${cellsOk}/${cells} · pièces : ${piecesOk}/${pieces} · niveau et compteurs : ${goalsGood}/${goals} · captures parfaites : ${imagesOk}/${Object.keys(truth).length}`);
+if (imagesOk !== Object.keys(truth).length) process.exitCode = 1;
