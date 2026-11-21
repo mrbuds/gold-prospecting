@@ -2,7 +2,7 @@
 
 **En ligne : https://mrbuds.github.io/gold-prospecting/**
 
-Une page web 100 % JavaScript, en **un seul fichier** (`docs/index.html`, environ 75 Ko),
+Une page web 100 % JavaScript, en **un seul fichier** (`docs/index.html`, environ 77 Ko),
 à partager avec l'alliance et le serveur. Elle marche sur téléphone comme sur PC, hébergée
 (par exemple GitHub Pages) ou ouverte directement depuis le fichier, même hors ligne.
 Aucune image ne quitte l'appareil ; le solveur conseille, il ne joue pas.
@@ -45,8 +45,10 @@ résultats sur les captures réduites (×0,7, ×0,8), agrandies (×1,6, ×2,2) e
 
 Configurations de bureau simulées à partir de la capture PC (`node test/desktop.js`) :
 demi-écran, petite fenêtre décalée, double écran, double écran 4K, écrans superposés et
-bureau portrait. Les six cas sont lus correctement, en environ 100 à 205 ms lors du test
-local (reconnaissance seule, hors décodage de l'image et calcul du coup).
+bureau portrait, ainsi que la page du solveur visible à côté d'une petite fenêtre de jeu.
+Les sept cas sont lus correctement, en environ 60 à 205 ms lors des tests locaux
+(reconnaissance seule, hors décodage de l'image et calcul du coup).
+La page du solveur seule est rejetée : sa grille ne doit pas être interprétée comme le jeu.
 
 Solveur contre une implémentation de référence (`node test/compare.js`, cas dans
 `test/cases.json`) : **1 247 poses sur 1 247 identiques** (plateau, lignes, gains) et

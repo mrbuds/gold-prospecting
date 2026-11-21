@@ -561,10 +561,16 @@
 
   function recognize(img) {
     const a = makeAccess(img);
+    const validBoard = (result, width, height) => {
+      if (result.error || result.debug.panels.length !== 3) return false;
+      const b = result.board;
+      return Math.abs(b.fit[0] - b.fit[1]) <= b.cell * 0.08 &&
+        b.x >= 0 && b.y >= 0 && b.x + b.size <= width && b.y + b.size <= height;
+    };
     let portrait;
     if (a.W <= a.H) {
       portrait = recognizeArea(a);
-      if (!portrait.error && portrait.level && portrait.debug.panels.length === 3) return portrait;
+      if (validBoard(portrait, a.W, a.H) && portrait.level) return portrait;
     }
     // Locate connected brown board regions on a small colour mask. This scan
     // depends on neither window position nor its size relative to the desktop.
@@ -604,15 +610,14 @@
       const width = Math.min(a.W - ox, Math.ceil(region.size * 1.36));
       const height = Math.min(a.H - oy, Math.ceil(region.size * 2.1));
       const result = recognizeArea({ W: width, H: height, px: (x, y) => a.px(x + ox, y + oy) });
-      if (result.error || !result.level || result.debug.panels.length !== 3) continue;
+      if (!validBoard(result, width, height) || !result.level) continue;
       const b = result.board;
-      if (Math.abs(b.fit[0] - b.fit[1]) > b.cell * 0.08 || b.x < 0 || b.x + b.size > width) continue;
       b.x += ox; b.y += oy;
       for (const p of [...result.debug.panels, ...result.goals]) { p.x0 += ox; p.x1 += ox; }
       for (const p of result.debug.panels) { p.y0 += oy; p.y1 += oy; }
       return result;
     }
-    return portrait || { error: 'board_not_found' };
+    return portrait && validBoard(portrait, a.W, a.H) ? portrait : { error: 'board_not_found' };
   }
 
   function setDigits(templates) { DIGITS = templates; }

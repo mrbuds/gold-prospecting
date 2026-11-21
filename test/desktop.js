@@ -6,6 +6,7 @@ const { readPng } = require('./png');
 const { recognize } = require('../recognize');
 const source = readPng(path.join(__dirname, 'images/desktop.png'));
 const want = require('./truth.json').images['desktop.png'];
+const web = readPng(path.join(__dirname, 'images/web-ui.png'));
 const layouts = [
   ['half screen', 2560, 1440, 0.5, 0, 200],
   ['small offset window', 2560, 1440, 0.4, 1400, 700],
@@ -13,6 +14,7 @@ const layouts = [
   ['two 4K monitors', 7680, 2160, 1, 4900, 500],
   ['stacked monitors', 2560, 2880, 0.75, 300, 1600],
   ['portrait desktop fallback', 1440, 2560, 0.5, 50, 1700],
+  ['web page beside small game', 3840, 2160, 0.5, 2400, 1000],
 ];
 for (const [label, width, height, scale, ox, oy] of layouts) {
   const data = new Uint8ClampedArray(width * height * 4);
@@ -20,6 +22,13 @@ for (const [label, width, height, scale, ox, oy] of layouts) {
   // A brown square must not be accepted as a board without goals/piece slots.
   for (let y = 20; y < 300; y++) for (let x = 20; x < 300; x++) {
     data.set([89, 74, 70, 255], (y * width + x) * 4);
+  }
+  if (label === 'web page beside small game') {
+    // Enlarge the solver UI so its board is larger than the real game's board.
+    for (let y = 0; y < web.height * 2; y++) for (let x = 0; x < web.width * 2; x++) {
+      const from = (Math.floor(y / 2) * web.width + Math.floor(x / 2)) * 4;
+      data.set(web.data.subarray(from, from + 4), ((y + 50) * width + x + 50) * 4);
+    }
   }
   for (let y = 0; y < Math.floor(source.height * scale); y++) {
     for (let x = 0; x < Math.floor(source.width * scale); x++) {
@@ -41,3 +50,5 @@ for (const [label, width, height, scale, ox, oy] of layouts) {
 const blank = { width: 1600, height: 900, data: new Uint8ClampedArray(1600 * 900 * 4) };
 assert.equal(recognize(blank).error, 'board_not_found');
 console.log('No game: rejected');
+assert.equal(recognize(web).error, 'board_not_found');
+console.log('Web solver alone: rejected');
